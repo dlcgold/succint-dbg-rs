@@ -273,6 +273,7 @@ impl SDbg {
 #[cfg(test)]
 mod tests {
     use crate::SDbg;
+    use std::path::Path;
 
     #[test]
     fn test_sdbg() {
@@ -285,11 +286,12 @@ mod tests {
     }
 
     #[test]
-    fn test_lf() {
+    fn test_dot() {
         let mut kmers = vec!["TACACT".to_string(),
                              "TACTCA".to_string(),
                              "GACTCG".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
         sdbg.to_dot("output/test.dot");
+        assert!(Path::new("output/test.dot").exists())
     }
 }
