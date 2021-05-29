@@ -6,8 +6,6 @@ use bio::data_structures::fmindex::{FMIndex, FMIndexable};
 use bio::alphabets;
 use std::fs::File;
 use std::io::Write;
-use std::fmt::Pointer;
-use std::ops::Index;
 
 #[allow(dead_code)]
 fn create_kmers(s: String, k: u32) -> Vec<String> {
@@ -191,7 +189,7 @@ impl SDbg {
         }
     }
 
-    pub fn lf_function(&self, mut index: usize) -> isize {
+    pub fn lf_function(&self, index: usize) -> isize {
         let symbol = self.fm().bwt()[index];
         let mut indexneg = index;
         let mut check = true;
@@ -203,8 +201,7 @@ impl SDbg {
                 }
             }
         }
-        println!("indexes: {}->{}", index, indexneg);
-        let mut j = 0;
+        let j;
         let mut jump = 0;
         if index == 0 {
             j = (self.fm().less(self.fm().bwt()[index])) as isize;
@@ -212,7 +209,6 @@ impl SDbg {
             j = (self.fm().less(self.fm().bwt()[indexneg]) +
                 (self.fm().occ(indexneg, self.fm().bwt()[indexneg])) - 1) as isize
         }
-        println!("pre jump: {}", j);
         if j > self.neg_pos()[0] as isize {
             for ind in 0..self.neg_pos().len() {
                 if j <= self.neg_pos()[ind] as isize {
@@ -221,37 +217,20 @@ impl SDbg {
                 jump += 1;
             }
         }
-        println!("post jump: {}", j + jump);
         j + jump as isize
     }
     pub fn to_dot(&self, output: &str) {
         let mut fileout = File::create(output).expect("error");
-        let mut nodes_tmp = self.nodes().clone();
-        println!("{:?}", self.neg_pos());
+        let nodes_tmp = self.nodes().clone();
         fileout
             .write("digraph sample{\n".as_bytes())
             .expect("error");
         let mut start = nodes_tmp[0].clone();
         let mut i = 0;
         let mut visited = vec![false; self.nodes.len()];
-        //visited[0] = true;
         let mut not_visited = self.nodes.len();
-
-        /*for i in 0..self.nodes.len(){
-            print!("{}: ",i);
-            for s in ['$', 'A', 'C', 'G', 'T']{
-                print!("{} ",self.fm().occ(i, s as u8));
-            }
-            println!();
-        }*/
-        /*for s in ['$', 'A', 'C', 'G', 'T']{
-            print!("{} {}\n",s, self.fm().less( s as u8));
-        }*/
         while not_visited != 0 {
-            println!("{} at {}", start, i);
-            let mut j = self.lf_function(i);
-            //println!("{},{},{},{}", start, i, j, &self.nodes()[(j) as usize]);
-
+            let j = self.lf_function(i);
             if !visited[i as usize] && self.fm().bwt()[i] as char != '$' {
                 fileout.write(
                     format!(
@@ -283,8 +262,6 @@ impl SDbg {
                 } else {
                     i = o as usize;
                 }
-                /*visited[i] = true;
-                not_visited -= 1;*/
                 start = self.nodes()[i as usize].clone();
             }
         }
@@ -296,7 +273,6 @@ impl SDbg {
 #[cfg(test)]
 mod tests {
     use crate::SDbg;
-    use bio::data_structures::fmindex::FMIndexable;
 
     #[test]
     fn test_sdbg() {
