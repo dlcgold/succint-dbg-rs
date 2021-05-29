@@ -1,0 +1,16 @@
+digraph sample{
+	"$$$" -> "$$G" [ label = "G" ];
+	"$$G" -> "$GA" [ label = "A" ];
+	"$GA" -> "GAC" [ label = "C" ];
+	"GAC" -> "ACT" [ label = "T" ];
+	"ACT" -> "CTC" [ label = "C" ];
+	"CTC" -> "TCA" [ label = "A" ];
+	"$$$" -> "$$T" [ label = "T" ];
+	"$$T" -> "$TA" [ label = "A" ];
+	"$TA" -> "TAC" [ label = "C" ];
+	"TAC" -> "ACT" [ label = "T" ];
+	"ACA" -> "CAC" [ label = "C" ];
+	"CAC" -> "ACT" [ label = "T" ];
+	"TAC" -> "ACA" [ label = "A" ];
+	"CTC" -> "TCG" [ label = "G" ];
+}
