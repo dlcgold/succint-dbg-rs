@@ -1,81 +1,38 @@
-
-running 2 tests
-[7, 9]
-test tests::test_sdbg ... ok
-$$$ at 0
-indexes: 0->0
-pre jump: 10
-post jump: 12
-$$G at 12
-indexes: 12->12
-pre jump: 4
-post jump: 4
-$GA at 4
-indexes: 4->4
-pre jump: 7
-post jump: 7
-GAC at 7
-indexes: 7->6
-pre jump: 13
-post jump: 15
-ACT at 15
-indexes: 15->15
-pre jump: 9
-post jump: 10
-CTC at 10
-indexes: 10->10
-pre jump: 3
-post jump: 3
-TCA at 3
-indexes: 3->3
-pre jump: 0
-post jump: 0
-dollar
-$$$ at 0
-indexes: 0->0
-pre jump: 10
-post jump: 12
-dollar
-$$$ at 1
-indexes: 1->1
-pre jump: 12
-post jump: 14
-$$T at 14
-indexes: 14->14
-pre jump: 5
-post jump: 5
-$TA at 5
-indexes: 5->5
-pre jump: 8
-post jump: 9
-TAC at 9
-indexes: 9->8
-pre jump: 2
-post jump: 2
-ACA at 2
-indexes: 2->2
-pre jump: 6
-post jump: 6
-CAC at 6
-indexes: 6->6
-pre jump: 13
-post jump: 15
-dollar
-TAC at 8
-indexes: 8->8
-pre jump: 2
-post jump: 2
-dollar
-CTC at 11
-indexes: 11->11
-pre jump: 11
-post jump: 13
-test tests::test_lf ... ok
-
-test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
+1|$$$$$|A ($$$$$,false)
+1|$$$$A|T (A$$$$,false)
+0|CCCAA|C (AACCC,false)
+1|CCCAA|T (AACCC,false)
+1|TTACA|T (ACATT,false)
+1|CCCCA|A (ACCCC,false)
+1|TCCCA|A (ACCCT,true)
+1|TTGCA|T (ACGTT,false)
+1|CATTA|C (ATTAC,false)
+1|TCTTA|C (ATTCT,false)
+1|CCAAC|C (CAACC,false)
+1|ATTAC|C (CATTA,false)
+1|CTTAC|A (CATTC,false)
+1|CAACC|$ (CCAAC,false)
+1|TTACC|G (CCATT,false)
+1|GCCCC|A (CCCCG,false)
+1|CGCCC|C (CCCGC,false)
+1|GTCCC|A (CCCTG,false)
+1|CCGCC|C (CCGCC,false)
+1|CGTCC|C (CCTGC,false)
+1|ACCGC|C (CGCCA,false)
+1|CTTGC|A (CGTTC,false)
+1|$$ATC|T (CTA$$,false)
+1|CAATC|$ (CTAAC,false)
+1|CCGTC|C (CTGCC,false)
+0|TACCG|C (GCCAT,false)
+1|TACCG|T (GCCAT,false)
+1|TCTTG|C (GTTCT,false)
+1|$$$AT|C (TA$$$,false)
+1|CCAAT|C (TAACC,false)
+1|TACAT|T (TACAT,false)
+1|TGCAT|T (TACGT,false)
+1|$ATCT|T (TCTA$,false)
+1|ACCGT|C (TGCCA,false)
+1|ACATT|A (TTACA,false)
+1|GCATT|A (TTACG,true)
+0|ATCTT|A (TTCTA,false)
+1|ATCTT|G (TTCTA,false)
