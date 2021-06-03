@@ -1,38 +1,18 @@
-1|$$$$$|A ($$$$$,false)
-1|$$$$A|T (A$$$$,false)
-0|CCCAA|C (AACCC,false)
-1|CCCAA|T (AACCC,false)
-1|TTACA|T (ACATT,false)
-1|CCCCA|A (ACCCC,false)
-1|TCCCA|A (ACCCT,true)
-1|TTGCA|T (ACGTT,false)
-1|CATTA|C (ATTAC,false)
-1|TCTTA|C (ATTCT,false)
-1|CCAAC|C (CAACC,false)
-1|ATTAC|C (CATTA,false)
-1|CTTAC|A (CATTC,false)
-1|CAACC|$ (CCAAC,false)
-1|TTACC|G (CCATT,false)
-1|GCCCC|A (CCCCG,false)
-1|CGCCC|C (CCCGC,false)
-1|GTCCC|A (CCCTG,false)
-1|CCGCC|C (CCGCC,false)
-1|CGTCC|C (CCTGC,false)
-1|ACCGC|C (CGCCA,false)
-1|CTTGC|A (CGTTC,false)
-1|$$ATC|T (CTA$$,false)
-1|CAATC|$ (CTAAC,false)
-1|CCGTC|C (CTGCC,false)
-0|TACCG|C (GCCAT,false)
-1|TACCG|T (GCCAT,false)
-1|TCTTG|C (GTTCT,false)
-1|$$$AT|C (TA$$$,false)
-1|CCAAT|C (TAACC,false)
-1|TACAT|T (TACAT,false)
-1|TGCAT|T (TACGT,false)
-1|$ATCT|T (TCTA$,false)
-1|ACCGT|C (TGCCA,false)
-1|ACATT|A (TTACA,false)
-1|GCATT|A (TTACG,true)
-0|ATCTT|A (TTCTA,false)
-1|ATCTT|G (TTCTA,false)
+
+running 8 tests
+test tests::test_sdbg_forward ... ok
+test tests::test_sdbg_backward ... ok
+test tests::test_sdbg_outdegree ... ok
+test tests::test_sdbg_indegree ... ok
+test tests::test_sdbg_successors ... ok
+test tests::test_sdbg_label ... ok
+test tests::test_sdbg_outgoing ... ok
+test tests::test_sdbg_to_dot ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

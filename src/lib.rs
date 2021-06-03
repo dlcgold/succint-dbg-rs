@@ -1,11 +1,7 @@
 extern crate bio;
 
 use std::collections::{HashSet, HashMap};
-use bio::data_structures::bwt::{less, Occ, Less, BWT};
-#[allow(unused_imports)]
-use bio::data_structures::fmindex::{FMIndex, FMIndexable};
 use bio::data_structures::rank_select::RankSelect;
-use bio::alphabets;
 use bv::BitVec;
 #[allow(unused_imports)]
 use std::fs::File;
@@ -78,21 +74,17 @@ pub fn get_kmers_succ(reads: &mut Vec<String>, k: u32) -> Vec<String> {
 
 pub struct SDbg {
     kmersize: u32,
-    nodes: Vec<String>,
+    n_nodes: usize,
     node_char: Vec<char>,
     last: Vec<usize>,
     out: Vec<char>,
     fvec: Vec<usize>,
     neg: Vec<bool>,
-    neg_pos: Vec<usize>,
-    nodes_rev: Vec<String>,
-    dollars: (usize, usize),
-    dollbwt_pos: Vec<usize>,
-    doll_pos: Vec<usize>,
     rschar: HashMap<char, RankSelect>,
+    rscharneg: HashMap<char, RankSelect>,
     rslast: RankSelect,
-    fm: FMIndex<BWT, Less, Occ>,
 }
+
 
 impl SDbg {
     pub fn new(reads: &mut Vec<String>, k: u32) -> Self {
@@ -181,17 +173,13 @@ impl SDbg {
             }
             node_char.push(nodes[i].chars().last().unwrap());
         }
-        let dna_alphabet = alphabets::Alphabet::new(b"$acgtACGT");
-        let outb = out.iter().map(|c| *c as u8).collect::<Vec<_>>();
-        let bwt: &[u8] = &outb[..];
-        let c_fun = less(bwt, &dna_alphabet);
-        let occ_fun = Occ::new(bwt, k as u32, &dna_alphabet);
-        let fm = FMIndex::new(outb, c_fun, occ_fun);
         let mut bitvecs = HashMap::new();
+        let mut bitvecsneg = HashMap::new();
         for s in "$acgtACGT".chars() {
             let mut bv = BitVec::new();
-            for c in &out {
-                if c == &s {
+            let mut bvneg = BitVec::new();
+            for (index, c) in out.iter().enumerate() {
+                if c == &s && !neg[index] {
                     bv.push(true);
                 } else {
                     bv.push(false);
@@ -200,6 +188,16 @@ impl SDbg {
             let krank = round::ceil(((bv.len() as f64).log2()).powf(2.) / (32 as f64), 0);
             let rank_select = RankSelect::new(bv.clone(), krank as usize);
             bitvecs.insert(s, rank_select);
+            for (indexn, c) in out.iter().enumerate() {
+                if c == &s && neg[indexn] {
+                    bvneg.push(true);
+                } else {
+                    bvneg.push(false);
+                }
+            }
+            let krankneg = round::ceil(((bvneg.len() as f64).log2()).powf(2.) / (32 as f64), 0);
+            let rank_selectneg = RankSelect::new(bvneg.clone(), krankneg as usize);
+            bitvecsneg.insert(s, rank_selectneg);
         }
         let mut bv = BitVec::new();
 
@@ -212,151 +210,39 @@ impl SDbg {
         //println!("{:?}", bv);
         let krank = round::ceil(((bv.len() as f64).log2()).powf(2.) / (32 as f64), 0);
         let rslast = RankSelect::new(bv.clone(), krank as usize);
-
+        let n_nodes = rslast.rank(out.len() as u64 - 1).unwrap() as usize;
         SDbg {
             kmersize: k,
-            nodes,
+            n_nodes,
             node_char,
             last,
             out,
-            nodes_rev,
             neg,
-            fm,
-            dollars,
-            dollbwt_pos,
-            doll_pos,
             rschar: bitvecs,
-            neg_pos,
+            rscharneg: bitvecsneg,
             fvec,
             rslast,
         }
     }
 
     pub fn kmersize(&self) -> u32 { self.kmersize }
-    pub fn nodes(&self) -> &Vec<String> { &self.nodes }
+    pub fn n_nodes(&self) -> usize { self.n_nodes }
     pub fn node_char(&self) -> &Vec<char> { &self.node_char }
     pub fn last(&self) -> &Vec<usize> { &self.last }
     pub fn out(&self) -> &Vec<char> { &self.out }
-    pub fn nodes_rev(&self) -> &Vec<String> { &self.nodes_rev }
-    pub fn fm(&self) -> &FMIndex<BWT, Less, Occ> { &self.fm }
     pub fn neg(&self) -> &Vec<bool> { &self.neg }
-    pub fn dollars(&self) -> (usize, usize) { self.dollars }
-    pub fn dollbwt_pos(&self) -> &Vec<usize> { &self.dollbwt_pos }
-    pub fn doll_pos(&self) -> &Vec<usize> { &self.doll_pos }
-    pub fn neg_pos(&self) -> &Vec<usize> { &self.neg_pos }
     pub fn fvec(&self) -> &Vec<usize> { &self.fvec }
     pub fn rschar(&self) -> &HashMap<char, RankSelect> { &self.rschar }
+    pub fn rscharneg(&self) -> &HashMap<char, RankSelect> { &self.rscharneg }
     pub fn rslast(&self) -> &RankSelect { &self.rslast }
 
     pub fn print(&self) {
-        for i in 0..self.nodes.len() {
-            println!("{}|{}|{} ({},{})", self.last[i], self.nodes[i], self.out[i],
-                     self.nodes_rev[i], self.neg[i]);
+        for i in 0..self.out().len() {
+            println!("{}|{}|{} ({})", self.last[i], self.node_char[i], self.out[i], self.neg[i]);
         }
     }
 
-    /*pub fn lf_function(&self, index: usize) -> isize {
-        let symbol = self.fm().bwt()[index];
-        let mut indexneg = index;
-        let mut check = true;
-        if self.neg()[indexneg] {
-            while check {
-                indexneg -= 1;
-                if !self.neg()[indexneg] && self.fm().bwt()[indexneg] == symbol {
-                    check = false;
-                }
-            }
-        }
-        let mut jump = 0;
-        println!("indexneg: {}", indexneg);
-        let mut j;
-        if index == 0 {
-            j = (self.fm().less(self.fm().bwt()[indexneg])) as isize;
-        } else {
-            j = (self.fm().less(self.fm().bwt()[indexneg]) +
-                (self.fm().occ(indexneg, self.fm().bwt()[indexneg])) - 1) as isize;
-        }
-
-        if j > self.neg_pos()[0] as isize {
-            for ind in 0..self.neg_pos().len() {
-                if j <= self.neg_pos()[ind] as isize {
-                    break;
-                }
-                jump += 1;
-            }
-        }
-        println!("jump: {}", jump);
-        if index == 0 {
-            j -= (self.dollars.1 - self.dollars.0) as isize;
-        } else if self.dollars.1 != self.dollars.0 && j >= self.dollbwt_pos[0] as isize {
-            let mut count_doll = 0;
-            for ind in 0..self.dollbwt_pos().len() {
-                if j < self.dollbwt_pos()[ind] as isize {
-                    break;
-                }
-                count_doll += 1;
-            }
-            j -= count_doll;
-        }
-        j + jump as isize
-    }*/
-
-    /*pub fn to_dot(&self, output: &str) {
-        let mut fileout = File::create(output).expect("error");
-        let nodes_tmp = self.nodes().clone();
-        fileout
-            .write("digraph sample{\n".as_bytes())
-            .expect("error");
-        let mut start = nodes_tmp[0].clone();
-        let mut i = 0;
-        let mut visited = vec![false; self.nodes.len()];
-        let mut not_visited = self.nodes.len();
-        println!("{:?}", self.dollbwt_pos());
-        for s in ['$', 'A', 'C', 'G', 'T'] {
-            println!("C({}) = {}", s, self.fm().less(s as u8));
-        }
-        while not_visited != 0 {
-            let j = self.lf_function(i);
-            println!("{} -> {}", i, j);
-            if !visited[i as usize] && self.fm().bwt()[i] as char != '$' {
-                fileout.write(
-                    format!(
-                        "\t\"{}\" -> \"{}\" [ label = \"{}\" ];\n",
-                        start,
-                        &self.nodes()[(j) as usize],
-                        self.fm().bwt()[i] as char
-                    )
-                        .as_bytes(),
-                )
-                    .expect("error");
-                visited[i as usize] = true;
-                start = self.nodes()[(j) as usize].clone();
-                not_visited -= 1;
-                i = (j) as usize;
-            } else {
-                let mut o: isize = -1;
-                for (ind, elem) in visited.clone().iter().enumerate() {
-                    if !*elem && self.fm().bwt()[ind] as char == '$' {
-                        visited[ind] = true;
-                        not_visited -= 1;
-                    } else if !*elem {
-                        o = ind as isize;
-                        break;
-                    }
-                }
-                if o == -1 {
-                    break;
-                } else {
-                    i = o as usize;
-                }
-                start = self.nodes()[i as usize].clone();
-            }
-        }
-
-        fileout.write("}".as_bytes()).expect("error");
-    }*/
-
-    pub fn findsymbol(&self, i: usize) -> char {
+    pub fn findsymbol(&self, i: isize) -> char {
         if i == 0 {
             return '$';
         }
@@ -364,7 +250,7 @@ impl SDbg {
         let mut lastcharnn = '$';
         let alphabet = "$ACGTacgt";
         for (index, elem) in alphabet.chars().enumerate() {
-            if *&self.fvec[elem as usize] > i {
+            if *&self.fvec[elem as usize] > i as usize {
                 symbol = alphabet.chars().nth(index - 1).unwrap();
                 break;
             }
@@ -378,175 +264,229 @@ impl SDbg {
         symbol
     }
 
-    pub fn first_edge(&self, i: usize) -> usize {
-        let select = match &self.rslast.select(i as u64) {
-            Some(t) => *t,
-            None => 0 as u64,
-        } + 1;
-        select as usize
+    pub fn first_edge(&self, i: isize) -> isize {
+        let select;
+        if i <= 0 {
+            select = -1;
+        } else {
+            select = match &self.rslast.select(i as u64) {
+                Some(t) => *t,
+                None => 0,
+            } as isize;
+        }
+        select as isize + 1
     }
 
-    pub fn last_edge(&self, i: usize) -> usize {
-        let select = match &self.rslast.select(i as u64 + 1) {
-            Some(t) => *t,
-            None => 0 as u64,
-        };
-        select as usize
+    pub fn last_edge(&self, i: isize) -> isize {
+        let select;
+        if i + 1 <= 0 {
+            select = -1;
+        } else {
+            select = match &self.rslast.select(i as u64 + 1) {
+                Some(t) => *t,
+                None => 0,
+            } as isize;
+        }
+        select as isize
     }
 
-    pub fn node_range(&self, i: usize) -> (usize, usize) {
+    pub fn node_range(&self, i: isize) -> (isize, isize) {
         (self.first_edge(i), self.last_edge(i))
     }
 
-    pub fn edge_to_node(&self, i: usize) -> usize {
+    pub fn edge_to_node(&self, i: isize) -> isize {
         if i == 0 {
             return 0;
         }
-        let rank = self.rslast().rank(i as u64 + 1).unwrap();
-        rank as usize
-    }
-
-    pub fn forward(&self, i: usize) -> usize {
-        let symbol = self.out[i];
-        if symbol == '$' {
-            return self.out().len();
-        }
-        let relindex = *&self.rschar()[&symbol].rank(i as u64).unwrap();
-        let firstocc = self.fvec[symbol as usize];
-        let ranklast = *&self.rslast().rank(firstocc as u64 - 1).unwrap();
-        let select = match &self.rslast.select(ranklast + relindex) {
-            Some(t) => *t,
-            None => 0 as u64,
+        let rank = match self.rslast().rank(i as u64 - 1) {
+            Some(t) => t,
+            None => 0,
         };
-        select as usize
+        rank as isize
+    }
+    pub fn node_to_edge(&self, i: isize) -> isize {
+        if i <= 0 {
+            return 0;
+        }
+        let select = match self.rslast().select(i as u64) {
+            Some(t) => t,
+            None => 0,
+        } + 1;
+        select as isize
     }
 
-    pub fn backward(&self, i: usize) -> usize {
+    pub fn forward(&self, i: isize) -> isize {
+        let symbol = self.out[i as usize];
+        if symbol == '$' {
+            return -1;
+        }
+        let relindex = match *&self.rschar()[&symbol].rank(i as u64) {
+            Some(t) => t,
+            None => 0,
+        };
+        let firstocc = self.fvec[symbol as usize];
+        let ranklast = match *&self.rslast().rank(firstocc as u64 - 1) {
+            Some(t) => t,
+            None => 0,
+        };
+        let select;
+        if ranklast + relindex <= 0 {
+            select = -1;
+        } else {
+            select = match &self.rslast.select(ranklast + relindex) {
+                Some(t) => *t,
+                None => 0,
+            } as isize;
+        }
+        select
+    }
+
+    pub fn backward(&self, i: isize) -> isize {
         let symbol = self.findsymbol(i);
         if symbol == '$' {
-            return self.out().len();
+            return -1;
         }
         let firstocc = self.fvec[symbol as usize];
-        let ranksymb = *&self.rslast().rank(i as u64 - 1).unwrap();
-        let ranklast = *&self.rslast().rank(firstocc as u64 - 1).unwrap();
-        let select = match &self.rschar()[&symbol].select(ranksymb - ranklast + 1) {
-            Some(t) => *t,
-            None => 0 as u64,
-        };
-        select as usize
+        let ranksymb = match *&self.rslast().rank(i as u64 - 1) {
+            Some(t) => t,
+            None => 0,
+        } as isize;
+        let ranklast = match *&self.rslast().rank(firstocc as u64 - 1) {
+            Some(t) => t,
+            None => 0,
+        } as isize;
+        let select;
+        if ranksymb - ranklast + 1 <= 0 {
+            select = -1;
+        } else {
+            select = match &self.rschar()[&symbol].select((ranksymb - ranklast + 1) as u64) {
+                Some(t) => *t,
+                None => 0,
+            } as isize;
+        }
+        select as isize
     }
 
-    pub fn outdegree(&self, i: usize) -> usize {
+    pub fn outdegree(&self, i: isize) -> isize {
+        if self.out()[i as usize] == '$' {
+            return 0;
+        }
         let range = self.node_range(i);
         if range.1 > range.0 {
             return range.1 - range.0 + 1;
         } else {
             return 1;
         }
+        //range.1 - range.0 + 1
     }
 
-    pub fn indegree(&self, i: usize) -> usize {
+    pub fn indegree(&self, i: isize) -> isize {
         let last = self.last_edge(i);
         let pred = self.backward(last);
-        if pred == self.out().len() {
+        if pred == -1 {
             return 0;
         }
-        let symbol = self.node_char()[pred];
-        let next = match &self.rschar()[&symbol].select(pred as u64 + 1) {
-            Some(t) => *t,
-            None => self.node_char().len() as u64,
-        } as usize;
-        let mut negpredrank = 0;
-        let mut negnextrank = 0;
-        for ind in (pred - 1)..0 {
-            if self.out()[ind] == symbol && self.neg()[ind] == true {
-                negpredrank += 1;
-            }
+        let symbol = self.out()[pred as usize];
+        let next;
+        if pred + 1 <= 0 {
+            next = -1
+        } else {
+            next = match &self.rschar()[&symbol].select(pred as u64 + 1) {
+                Some(t) => *t,
+                None => self.out().len() as u64 - 1,
+            } as isize;
         }
-        for ind in (next - 1)..0 {
-            if self.out()[ind] == symbol && self.neg()[ind] == true {
-                negnextrank += 1;
-            }
-        }
+        let negnextrank = match *&self.rscharneg[&symbol].rank(next as u64) {
+            Some(t) => t,
+            None => 0,
+        } as isize;
+        let negpredrank = match *&self.rscharneg[&symbol].rank(pred as u64) {
+            Some(t) => t,
+            None => 0,
+        } as isize;
         negnextrank - negpredrank + 1
     }
 
     #[allow(unused_variables)]
-    pub fn outgoing(&self, i: usize, symbol: char) -> usize {
+    pub fn outgoing(&self, i: isize, symbol: char) -> isize {
         if symbol == '$' {
-            return self.out().len();
+            return -1;
         }
         let range = self.node_range(i);
-        let mut negrank = 0;
-        let mut negselect = i;
-        let mut check = true;
-        for ind in (i - 1)..0 {
-            if self.out()[ind] == symbol && self.neg()[ind] == true {
-                if check {
-                    negselect = ind;
-                    check = false;
-                }
-                negrank += 1;
-            }
-        }
-        let relindex = *&self.rschar()[&symbol].rank(range.1 as u64).unwrap();
-        let selectnode = match &self.rschar()[&symbol].select(relindex) {
-            Some(t) => *t,
-            None => 0 as u64,
-        } as usize;
-        return if range.0 <= selectnode && selectnode <= range.1 {
-            (*&self.rslast.rank(self.forward(selectnode) as u64).unwrap() - 1) as usize
-        } else if range.0 <= negselect && negselect <= range.1 {
-            (*&self.rslast.rank(self.forward(negselect) as u64).unwrap() - 1) as usize
+        let relindex = match *&self.rschar()[&symbol].rank(range.1 as u64) {
+            Some(t) => t,
+            None => 0,
+        };
+        let selectnode;
+        if relindex <= 0 {
+            selectnode = -1;
         } else {
-            self.out().len()
+            selectnode = match &self.rschar()[&symbol].select(relindex) {
+                Some(t) => *t,
+                None => 0,
+            } as isize;
+        }
+
+        let relindexneg = match *&self.rscharneg()[&symbol].rank(range.1 as u64) {
+            Some(t) => t,
+            None => 0,
+        };
+        let selectnodeneg;
+        if relindexneg <= 0 {
+            selectnodeneg = -1;
+        } else {
+            selectnodeneg = match &self.rscharneg()[&symbol].select(relindexneg) {
+                Some(t) => *t,
+                None => 0,
+            } as isize;
+        }
+        return if range.0 <= selectnode && selectnode <= range.1 {
+            (match *&self.rslast.rank(self.forward(selectnode) as u64) {
+                Some(t) => t,
+                None => 0,
+            } - 1) as isize
+        } else if range.0 <= selectnodeneg && selectnodeneg <= range.1 {
+            (match *&self.rslast.rank(self.forward(selectnodeneg) as u64) {
+                Some(t) => t,
+                None => 0,
+            } - 1) as isize
+        } else {
+            -1
         };
     }
 
-    pub fn successors(&self, i: usize) -> Vec<usize> {
+    pub fn successors(&self, i: isize) -> Vec<isize> {
         let mut succs = Vec::new();
         let range = self.node_range(i);
         for i in range.0..range.1 + 1 {
-            succs.push(self.rslast.rank(self.forward(i) as u64).unwrap() as usize - 1);
+            succs.push(match self.rslast.rank(self.forward(i) as u64) {
+                Some(t) => t,
+                None => 0,
+            } as isize - 1);
         }
         succs
     }
 
-    pub fn label(&self, i: usize) -> String {
-        let nodepos = match &self.rslast().select(i as u64 + 1) {
-            Some(t) => *t,
-            None => 0 as u64,
-        } as usize;
-        let mut index = nodepos;
+    pub fn label(&self, i: isize) -> String {
+        if i == 0 {
+            let mut countd = self.kmersize - 1;
+            let mut dollars = "".to_string();
+            while countd != 0 {
+                dollars.push('$');
+                countd -= 1;
+            }
+            return dollars;
+        }
+        let mut index = self.first_edge(i);
+        //println!("{},{}", i, index);
         let mut symbol = self.findsymbol(index);
         let mut label = symbol.to_string();
         let mut count = self.kmersize - 2;
-        println!("{} at {}", symbol, index);
-        if symbol == '$' {
-            while count != 0 {
-                label.push('$');
-                count -= 1;
-            }
-
-            return label;
-        }
 
         while count != 0 {
             let new_index = self.backward(index);
             symbol = self.findsymbol(new_index);
             label.push(symbol);
-            println!("{}->", index);
-            /*if self.last[new_index] == 0 {
-                index = match &self.rslast().select(new_index as u64) {
-                    Some(t) => *t,
-                    None => 0 as u64,
-                } as usize;
-            }*/
-            index = match &self.rslast().select(new_index as u64) {
-                Some(t) => *t,
-                None => 0 as u64,
-            } as usize;
-            println!("{}, {}, {}", index, new_index, symbol);
             count -= 1;
             if symbol == '$' {
                 while count != 0 {
@@ -555,9 +495,38 @@ impl SDbg {
                 }
                 break;
             }
+            index = new_index;
         }
         let label = label.chars().rev().collect::<String>();
         label
+    }
+
+    pub fn to_dot(&self, output: &str) {
+        let mut fileout = File::create(output).expect("error");
+        fileout
+            .write("digraph sample{\n".as_bytes())
+            .expect("error");
+        for i in 0..self.n_nodes() {
+            for j in self.successors(i as isize) {
+                if j != -1 {
+                    let start = self.label(i as isize);
+                    let end = self.label(j as isize);
+
+                    fileout.write(
+                        format!(
+                            "\t\"{}\" -> \"{}\" [ label = \"{}\" ];\n",
+                            start,
+                            end,
+                            end.chars().last().unwrap()
+                        )
+                            .as_bytes(),
+                    )
+                        .expect("error");
+                }
+            }
+        }
+
+        fileout.write("}".as_bytes()).expect("error");
     }
 }
 
@@ -574,7 +543,6 @@ mod tests {
                               "TACTCA".to_string(),
                               "GACTCG".to_string()];
          let sdbg = SDbg::new(&mut kmers, 4);
-         sdbg.print()
          assert_eq!(sdbg.nodes.len(), 16);
      }*/
 
@@ -583,9 +551,9 @@ mod tests {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
         let mut forw = Vec::new();
-        let forcheck = vec![10, 4, 5, 8, 11, 9, 10, 1, 12, 2, 4, 13, 6];
-        for i in 0..sdbg.nodes.len() {
-            forw.push(sdbg.forward(i));
+        let forcheck = vec![10, 4, 5, 8, 11, 8, 9, 1, 12, 1, 2, -1, 6];
+        for i in 0..sdbg.out().len() {
+            forw.push(sdbg.forward(i as isize));
         }
         assert_eq!(forw, forcheck);
     }
@@ -595,9 +563,9 @@ mod tests {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
         let mut backw = Vec::new();
-        let backcheck = vec![13, 7, 9, 1, 1, 2, 12, 3, 3, 5, 0, 4, 8];
-        for i in 0..sdbg.nodes.len() {
-            backw.push(sdbg.backward(i));
+        let backcheck = vec![-1, 7, 10, 1, 1, 2, 12, 3, 3, 6, 0, 4, 8];
+        for i in 0..sdbg.out().len() {
+            backw.push(sdbg.backward(i as isize));
         }
         assert_eq!(backw, backcheck);
     }
@@ -606,50 +574,93 @@ mod tests {
     fn test_sdbg_outdegree() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        println!("{:?}", sdbg.node_char());
         let mut outd = Vec::new();
-        let outcheck = vec![1, 1, 2, 1, 1, 2, 1, 1, 1, 1, 1, 1];
-        for i in 1..sdbg.nodes().len() {
-            outd.push(sdbg.outdegree(i));
+        let outcheck = vec![1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1];
+        for i in 0..sdbg.n_nodes() {
+            outd.push(sdbg.outdegree(i as isize));
         }
         assert_eq!(outd, outcheck);
     }
 
-    /* #[test]
+    #[test]
+    fn test_sdbg_indegree() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut ind = Vec::new();
+        let incheck = vec![0, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1];
+        for i in 0..sdbg.n_nodes() {
+            ind.push(sdbg.indegree(i as isize));
+        }
+        assert_eq!(ind, incheck);
+    }
+
+    #[test]
     fn test_sdbg_outgoing() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
+        let mut outg = Vec::new();
+        let outcheck = vec![-1, -1, -1, -1, 8, -1, -1, 3, -1, -1, -1, -1, 4, -1, -1, -1,
+                            -1, -1, 6, 9, -1, -1, -1, 6, -1, -1, -1, -1, 7, -1, -1, 1, -1, -1, 10,
+                            -1, 1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5,
+                            -1, -1];
+        for i in 0..sdbg.n_nodes() {
+            for j in ['$', 'A', 'C', 'G', 'T'] {
+                outg.push(sdbg.outgoing(i as isize, j));
+            }
+        }
+        assert_eq!(outg, outcheck);
+    }
 
-    }*/
-    /*#[test]
+    #[test]
     fn test_sdbg_label() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        for i in 0..sdbg.nodes.len() {
-            let l = sdbg.label(i);
-            println!("{} \n---------------", l);
+        let mut label = Vec::new();
+        let labelcheck = vec!["$$$", "CGA", "$TA", "GAC", "TAC", "GTC", "ACG", "TCG",
+                              "$$T", "ACT", "CGT", "$$T", "CGA"];
+        for i in 0..sdbg.out().len() {
+            label.push(sdbg.label(i as isize));
         }
-    }*/
+        assert_eq!(label, labelcheck);
+    }
 
-    /*#[test]
-    fn test_dot() {
+    #[test]
+    fn test_sdbg_successors() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut outs = Vec::new();
+        let succcheck = vec![vec![8], vec![3], vec![4], vec![6, 9], vec![6], vec![7],
+                             vec![1, 10], vec![1], vec![2], vec![-1], vec![5]];
+        for i in 0..sdbg.n_nodes() {
+            outs.push(sdbg.successors(i as isize));
+        }
+        assert_eq!(outs, succcheck);
+    }
+
+    #[test]
+    fn test_sdbg_to_dot() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        sdbg.to_dot("output/bowe.dot");
+        assert!(Path::new("output/bowe.dot").exists());
+    }
+
+    #[test]
+    fn test_dot_slide() {
         let mut kmers = vec!["TACACT".to_string(),
                              "TACTCA".to_string(),
                              "GACTCG".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        sdbg.to_dot("output/test.dot");
-        assert!(Path::new("output/test.dot").exists());
-    }*/
+        sdbg.to_dot("output/slide.dot");
+        assert!(Path::new("output/slide.dot").exists());
+    }
 
-
-    /*#[test]
-    fn test_dot_2() {
+    #[test]
+    fn test_dot_assign2() {
         let mut kmers = vec!["ATCTTGCATTACCGCCCCAATC".to_string(),
                              "ATCTTACATTACCGTCCCAACC".to_string()];
         let sdbg = SDbg::new(&mut kmers, 6);
-        sdbg.print();
-
-        sdbg.to_dot("output/test2.dot");
-        //assert!(Path::new("output/test2.dot").exists());
-    }*/
+        sdbg.to_dot("output/assign2.dot");
+        assert!(Path::new("output/assign2.dot").exists());
+    }
 }
