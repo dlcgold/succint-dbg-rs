@@ -24,5 +24,6 @@ Succint rappresentation support:
 
 ## Todo
 - [ ] documentation
+- [ ] optimizations
 - [ ] refactoring
 - [ ] more tests
