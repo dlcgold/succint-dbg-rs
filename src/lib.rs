@@ -184,30 +184,26 @@ impl SDbg {
                 } else {
                     bv.push(false);
                 }
-            }
-            let krank = round::ceil(((bv.len() as f64).log2()).powf(2.) / (32 as f64), 0);
-            let rank_select = RankSelect::new(bv.clone(), krank as usize);
-            bitvecs.insert(s, rank_select);
-            for (indexn, c) in out.iter().enumerate() {
-                if c == &s && neg[indexn] {
+                if c == &s && neg[index] {
                     bvneg.push(true);
                 } else {
                     bvneg.push(false);
                 }
             }
+            let krank = round::ceil(((bv.len() as f64).log2()).powf(2.) / (32 as f64), 0);
             let krankneg = round::ceil(((bvneg.len() as f64).log2()).powf(2.) / (32 as f64), 0);
+            let rank_select = RankSelect::new(bv.clone(), krank as usize);
             let rank_selectneg = RankSelect::new(bvneg.clone(), krankneg as usize);
+            bitvecs.insert(s, rank_select);
             bitvecsneg.insert(s, rank_selectneg);
         }
         let mut bv = BitVec::new();
-
         for e in &last {
             match e {
                 1 => bv.push(true),
                 _ => bv.push(false),
             }
         }
-        //println!("{:?}", bv);
         let krank = round::ceil(((bv.len() as f64).log2()).powf(2.) / (32 as f64), 0);
         let rslast = RankSelect::new(bv.clone(), krank as usize);
         let n_nodes = rslast.rank(out.len() as u64 - 1).unwrap() as usize;
@@ -601,7 +597,6 @@ mod tests {
     use crate::SDbg;
     #[allow(unused_imports)]
     use std::path::Path;
-    use std::fs;
 
     #[test]
     fn test_sdbg() {
