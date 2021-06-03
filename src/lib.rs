@@ -601,6 +601,7 @@ mod tests {
     use crate::SDbg;
     #[allow(unused_imports)]
     use std::path::Path;
+    use std::fs;
 
     #[test]
     fn test_sdbg() {
