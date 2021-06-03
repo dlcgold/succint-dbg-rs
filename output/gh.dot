@@ -1,0 +1,15 @@
+digraph sample{
+    rankdir="LR";
+	"$$$" -> "$$T" [ label = "T" ];
+	"CGA" -> "GAC" [ label = "C" ];
+	"$TA" -> "TAC" [ label = "C" ];
+	"GAC" -> "ACG" [ label = "G" ];
+	"GAC" -> "ACT" [ label = "T" ];
+	"TAC" -> "ACG" [ label = "G" ];
+	"GTC" -> "TCG" [ label = "G" ];
+	"ACG" -> "CGA" [ label = "A" ];
+	"ACG" -> "CGT" [ label = "T" ];
+	"TCG" -> "CGA" [ label = "A" ];
+	"$$T" -> "$TA" [ label = "A" ];
+	"CGT" -> "GTC" [ label = "C" ];
+}

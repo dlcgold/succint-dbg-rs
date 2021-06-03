@@ -311,7 +311,7 @@ impl SDbg {
         let select = match self.rslast().select(i as u64) {
             Some(t) => t,
             None => 0,
-        } + 1;
+        } - 1;
         select as isize
     }
 
@@ -478,11 +478,9 @@ impl SDbg {
             return dollars;
         }
         let mut index = self.first_edge(i);
-        //println!("{},{}", i, index);
         let mut symbol = self.findsymbol(index);
         let mut label = symbol.to_string();
         let mut count = self.kmersize - 2;
-
         while count != 0 {
             let new_index = self.backward(index);
             symbol = self.findsymbol(new_index);
@@ -499,6 +497,74 @@ impl SDbg {
         }
         let label = label.chars().rev().collect::<String>();
         label
+    }
+
+    fn firstchar(&self, i: isize) -> char {
+        let node = self.edge_to_node(i);
+        self.label(node).chars().next().unwrap()
+    }
+
+    fn selector(&self, i: isize, symbol: char, flag: isize, pred: isize) -> isize {
+        if i > 0 {
+            let select;
+            if flag + i <= 0 {
+                select = -1
+            } else {
+                select = match &self.rscharneg()[&symbol].select((flag + i) as u64) {
+                    Some(t) => *t,
+                    None => 0,
+                } as isize;
+            }
+            return select;
+        } else {
+            return pred;
+        }
+    }
+
+    fn accessor(&self, i: isize, symbol: char, flag: isize, pred: isize) -> char {
+        self.firstchar(self.selector(i, symbol, flag, pred))
+    }
+
+    pub fn incoming(&self, i: isize, symbolf: char) -> isize {
+        let last = self.last_edge(i);
+        let pred = self.backward(last);
+        if pred == -1 {
+            return -1;
+        }
+        let symbol = self.out()[pred as usize];
+        let next;
+        if pred + 1 <= 0 {
+            next = -1
+        } else {
+            next = match &self.rschar()[&symbol].select(pred as u64 + 1) {
+                Some(t) => *t,
+                None => self.out().len() as u64 - 1,
+            } as isize;
+        }
+        let flag = match self.rscharneg[&symbol].rank(pred as u64) {
+            Some(t) => t,
+            None => 0
+        } as isize;
+        let indeg = match self.rscharneg[&symbol].rank(next as u64) {
+            Some(t) => t,
+            None => 0
+        } as isize - flag + 1;
+
+        let mut subind: isize = -1;
+        let mut tmp = Vec::new();
+        for ind in 0..indeg {
+            tmp.push(self.accessor(ind, symbol, flag, pred));
+        }
+        tmp.sort();
+        for (ind, elem) in tmp.iter().enumerate() {
+            if ind != tmp.len() && elem == &symbolf {
+                subind = ind as isize;
+            }
+        }
+        if subind == -1 {
+            return -1;
+        }
+        self.edge_to_node(self.selector(subind, symbol, flag, pred))
     }
 
     pub fn to_dot(&self, output: &str) {
@@ -525,7 +591,6 @@ impl SDbg {
                 }
             }
         }
-
         fileout.write("}".as_bytes()).expect("error");
     }
 }
@@ -537,14 +602,22 @@ mod tests {
     #[allow(unused_imports)]
     use std::path::Path;
 
-    /* #[test]
-     fn test_sdbg() {
-         let mut kmers = vec!["TACACT".to_string(),
-                              "TACTCA".to_string(),
-                              "GACTCG".to_string()];
-         let sdbg = SDbg::new(&mut kmers, 4);
-         assert_eq!(sdbg.nodes.len(), 16);
-     }*/
+    #[test]
+    fn test_sdbg() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let lastcheck: Vec<usize> = vec![1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1];
+        let nodecheck = vec!['$', 'A', 'A', 'C', 'C', 'C', 'C', 'G', 'G', 'G', 'T',
+                             'T', 'T'];
+        let outcheck = vec!['T', 'C', 'C', 'G', 'T', 'G', 'G', 'A', 'T', 'A', 'A',
+                            '$', 'C'];
+        let negcheck = vec![false, false, false, false, false, true, false, false,
+                            false, true, false, false, false];
+        assert_eq!(sdbg.last(), &lastcheck);
+        assert_eq!(sdbg.node_char(), &nodecheck);
+        assert_eq!(sdbg.out(), &outcheck);
+        assert_eq!(sdbg.neg(), &negcheck);
+    }
 
     #[test]
     fn test_sdbg_forward() {
@@ -635,6 +708,22 @@ mod tests {
             outs.push(sdbg.successors(i as isize));
         }
         assert_eq!(outs, succcheck);
+    }
+
+    #[test]
+    fn test_sdbg_incoming() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut ing = Vec::new();
+        let incheck = vec![-1, -1, -1, -1, -1, -1, 6, -1, -1, 7, 8, -1, -1, -1, -1, -1, -1,
+                           1, -1, -1, 2, -1, -1, -1, -1, -1, -1, 10, -1, -1, -1, -1, -1, 3, 4, -1,
+                           -1, -1, 5, -1, 0, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, 6, -1, -1, -1];
+        for i in 0..sdbg.n_nodes() {
+            for j in ['$', 'A', 'C', 'G', 'T'] {
+                ing.push(sdbg.incoming(i as isize, j));
+            }
+        }
+        assert_eq!(ing, incheck);
     }
 
     #[test]
