@@ -10,6 +10,7 @@
 //! Examples will follow the graph in Alex Bowe's website
 
 extern crate bio;
+
 use std::collections::{HashSet, HashMap};
 use bio::data_structures::rank_select::RankSelect;
 use bv::BitVec;
@@ -50,7 +51,6 @@ pub fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
 pub struct SDbg {
     kmersize: u32,
     n_nodes: usize,
-    node_char: Vec<char>,
     last: Vec<usize>,
     edge: Vec<char>,
     fvec: Vec<usize>,
@@ -69,16 +69,16 @@ impl SDbg {
         for kmer in &kmers {
             let kmer1 = kmer[0..(k - 1) as usize].to_string();
             node_edge.push((kmer[0..(k - 1) as usize].to_string(),
-                           kmer.chars().last().unwrap(),
-                           kmer1.chars().rev().collect()));
+                            kmer.chars().last().unwrap(),
+                            kmer1.chars().rev().collect()));
             set_check.insert(kmer1);
         }
         for kmer in kmers {
             let kmer2 = kmer[1..].to_string();
             if !set_check.contains(&kmer2) {
                 node_edge.push((kmer[1..].to_string(),
-                               '$',
-                               kmer2.chars().rev().collect()));
+                                '$',
+                                kmer2.chars().rev().collect()));
             }
         }
 
@@ -117,7 +117,6 @@ impl SDbg {
         nodes.push(real_order[real_order.len() - 1].0.clone());
         edge.push(real_order[real_order.len() - 1].1);
         let mut check_neg: HashSet<(String, char)> = HashSet::new();
-        let mut node_char = Vec::new();
         let mut fvec = vec![0; 256];
         for i in 0..real_order.len() {
             if i == 0 {
@@ -132,7 +131,6 @@ impl SDbg {
                 neg[i] = true;
                 neg_pos.push(i);
             }
-            node_char.push(nodes[i].chars().last().unwrap());
         }
         let mut bitvecs = HashMap::new();
         let mut bitvecsneg = HashMap::new();
@@ -171,7 +169,6 @@ impl SDbg {
         SDbg {
             kmersize: k,
             n_nodes,
-            node_char,
             last,
             edge,
             neg,
@@ -186,8 +183,6 @@ impl SDbg {
     pub fn kmersize(&self) -> u32 { self.kmersize }
     /// return the amount of nodes in the succint dbg
     pub fn n_nodes(&self) -> usize { self.n_nodes }
-    /// return the vec of last chars of nodes (sorted by the last char, as explained in Bowe's research)
-    pub fn node_char(&self) -> &Vec<char> { &self.node_char }
     /// return the last array (as explained in Bowe's research)
     pub fn last(&self) -> &Vec<usize> { &self.last }
     /// return the vec of edges (as explained in Bowe's research)
@@ -205,7 +200,13 @@ impl SDbg {
     /// print main structires of succint dbg
     pub fn print(&self) {
         for i in 0..self.edge().len() {
-            println!("{}|{}|{} ({})", self.last[i], self.node_char[i], self.edge[i], self.neg[i]);
+            println!("{}|{} ({})", self.last[i], self.edge[i], self.neg[i]);
+        }
+        println!();
+        for s in vec!['$', 'A', 'C', 'G', 'T', 'a', 'c', 'g', 't'] {
+            if self.fvec[s as usize] != 0 || s == '$' {
+                println!("F({}) = {}", s, self.fvec[s as usize]);
+            }
         }
     }
     /// return the last char at index F array
@@ -585,16 +586,21 @@ mod tests {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
         let lastcheck: Vec<usize> = vec![1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1];
-        let nodecheck = vec!['$', 'A', 'A', 'C', 'C', 'C', 'C', 'G', 'G', 'G', 'T',
-                             'T', 'T'];
         let edgecheck = vec!['T', 'C', 'C', 'G', 'T', 'G', 'G', 'A', 'T', 'A', 'A',
-                            '$', 'C'];
+                             '$', 'C'];
         let negcheck = vec![false, false, false, false, false, true, false, false,
                             false, true, false, false, false];
+        let fcheck = vec![0, 1, 3, 7, 10];
+        let mut fvec = Vec::new();
+        for elem in vec!['$', 'A', 'C', 'G', 'T', 'a', 'c', 'g', 't'] {
+            if sdbg.fvec[elem as usize] != 0 || elem == '$'{
+                fvec.push(sdbg.fvec[elem as usize]);
+            }
+        }
         assert_eq!(sdbg.last(), &lastcheck);
-        assert_eq!(sdbg.node_char(), &nodecheck);
         assert_eq!(sdbg.edge(), &edgecheck);
         assert_eq!(sdbg.neg(), &negcheck);
+        assert_eq!(&fvec, &fcheck);
     }
 
     #[test]
@@ -651,9 +657,9 @@ mod tests {
         let sdbg = SDbg::new(&mut kmers, 4);
         let mut edgeg = Vec::new();
         let edgecheck = vec![-1, -1, -1, -1, 8, -1, -1, 3, -1, -1, -1, -1, 4, -1, -1, -1,
-                            -1, -1, 6, 9, -1, -1, -1, 6, -1, -1, -1, -1, 7, -1, -1, 1, -1, -1, 10,
-                            -1, 1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5,
-                            -1, -1];
+                             -1, -1, 6, 9, -1, -1, -1, 6, -1, -1, -1, -1, 7, -1, -1, 1, -1, -1, 10,
+                             -1, 1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5,
+                             -1, -1];
         for i in 0..sdbg.n_nodes() {
             for j in ['$', 'A', 'C', 'G', 'T'] {
                 edgeg.push(sdbg.outgoing(i as isize, j));
