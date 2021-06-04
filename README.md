@@ -19,8 +19,12 @@ Succint rappresentation support:
     let mut reads = vec!["TACGACGTCGACT".to_string()];
     let sdbg = SDbg::new(&mut reads, 4);
 ```
-
 ![](output/gh.png)
+
+More examples in Doc:
+```bash
+cargo doc --open
+```
 
 ## Todo
 - [ ] documentation
