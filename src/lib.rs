@@ -1,5 +1,15 @@
-extern crate bio;
+//! Draft implementation of succint de Bruijn Graph of [Alex Bowe](https://alexbowe.com/succinct-debruijn-graphs/)
+//! ([Python Code](https://github.com/alexbowe/debby))
+//!
+//! TODO:
+//! - [x] documentation (incomplete)
+//! - [ ] optimizations
+//! - [ ] refactoring
+//! - [ ] more tests
+//!
+//! Examples will follow the graph in Alex Bowe's website
 
+extern crate bio;
 use std::collections::{HashSet, HashMap};
 use bio::data_structures::rank_select::RankSelect;
 use bv::BitVec;
@@ -9,49 +19,15 @@ use std::fs::File;
 use std::io::Write;
 use math::round;
 
+/// utility for create kmer-set (with correct number of $ at the begin) from a string.
 #[allow(dead_code)]
-fn create_kmers(s: String, k: u32) -> Vec<String> {
+pub fn create_kmers(s: String, k: u32) -> Vec<String> {
     get_kmers(&mut vec![s], k)
 }
 
+/// utility for create kmer-set (with correct number of $ at the begin) from Vec a string
 #[allow(dead_code)]
-fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
-    let mut v: Vec<String> = Vec::new();
-    for s in reads {
-        while s.len() >= k as usize {
-            v.push(s[0..k as usize].to_string());
-            *s = String::from(&s[1..]);
-        }
-    }
-    v
-}
-
-#[allow(dead_code)]
-fn create_kmers_unique(s: String, k: u32) -> Vec<String> {
-    get_kmers_unique(&mut vec![s], k)
-}
-
-#[allow(dead_code)]
-pub fn get_kmers_unique(reads: &mut Vec<String>, k: u32) -> Vec<String> {
-    let mut v: Vec<String> = Vec::new();
-    for s in reads {
-        while s.len() >= k as usize {
-            if !v.contains(&s[0..k as usize].to_string()) {
-                v.push(s[0..k as usize].to_string());
-            }
-            *s = String::from(&s[1..]);
-        }
-    }
-    v
-}
-
-#[allow(dead_code)]
-fn create_kmers_succ(s: String, k: u32) -> Vec<String> {
-    get_kmers_succ(&mut vec![s], k)
-}
-
-#[allow(dead_code)]
-pub fn get_kmers_succ(reads: &mut Vec<String>, k: u32) -> Vec<String> {
+pub fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
     let mut dollars = String::new();
     for _i in 0..k - 1 {
@@ -71,13 +47,12 @@ pub fn get_kmers_succ(reads: &mut Vec<String>, k: u32) -> Vec<String> {
     v
 }
 
-
 pub struct SDbg {
     kmersize: u32,
     n_nodes: usize,
     node_char: Vec<char>,
     last: Vec<usize>,
-    out: Vec<char>,
+    edge: Vec<char>,
     fvec: Vec<usize>,
     neg: Vec<bool>,
     rschar: HashMap<char, RankSelect>,
@@ -85,15 +60,15 @@ pub struct SDbg {
     rslast: RankSelect,
 }
 
-
 impl SDbg {
+    /// create new succint dbg from a set of string
     pub fn new(reads: &mut Vec<String>, k: u32) -> Self {
-        let mut node_out: Vec<(String, char, String)> = Vec::new();
-        let kmers = get_kmers_succ(reads, k);
+        let mut node_edge: Vec<(String, char, String)> = Vec::new();
+        let kmers = get_kmers(reads, k);
         let mut set_check = HashSet::new();
         for kmer in &kmers {
             let kmer1 = kmer[0..(k - 1) as usize].to_string();
-            node_out.push((kmer[0..(k - 1) as usize].to_string(),
+            node_edge.push((kmer[0..(k - 1) as usize].to_string(),
                            kmer.chars().last().unwrap(),
                            kmer1.chars().rev().collect()));
             set_check.insert(kmer1);
@@ -101,20 +76,20 @@ impl SDbg {
         for kmer in kmers {
             let kmer2 = kmer[1..].to_string();
             if !set_check.contains(&kmer2) {
-                node_out.push((kmer[1..].to_string(),
+                node_edge.push((kmer[1..].to_string(),
                                '$',
                                kmer2.chars().rev().collect()));
             }
         }
 
-        node_out.sort_by(|a, b| (a.2.cmp(&b.2)));
+        node_edge.sort_by(|a, b| (a.2.cmp(&b.2)));
         let mut real_order = Vec::new();
         let mut tmp = Vec::new();
-        for i in 0..node_out.len() {
-            if i != node_out.len() - 1 && &node_out[i].0 == &node_out[i + 1].0 {
-                tmp.push(node_out[i].clone());
+        for i in 0..node_edge.len() {
+            if i != node_edge.len() - 1 && &node_edge[i].0 == &node_edge[i + 1].0 {
+                tmp.push(node_edge[i].clone());
             } else {
-                tmp.push(node_out[i].clone());
+                tmp.push(node_edge[i].clone());
                 if tmp.len() != 1 {
                     tmp.sort_by(|a, b| (a.1.cmp(&b.1)));
                 }
@@ -126,8 +101,7 @@ impl SDbg {
         }
         let mut last = Vec::new();
         let mut nodes = Vec::new();
-        let mut out = Vec::new();
-        let mut nodes_rev = Vec::new();
+        let mut edge = Vec::new();
         let mut neg = vec![false; real_order.len()];
         let mut neg_pos = Vec::new();
         for i in 0..real_order.len() - 1 {
@@ -137,17 +111,12 @@ impl SDbg {
                 last.push(1);
             }
             nodes.push(real_order[i].0.clone());
-            out.push(real_order[i].1);
-            nodes_rev.push(real_order[i].2.clone());
+            edge.push(real_order[i].1);
         }
         last.push(1);
         nodes.push(real_order[real_order.len() - 1].0.clone());
-        out.push(real_order[real_order.len() - 1].1);
-        nodes_rev.push(real_order[real_order.len() - 1].2.clone());
+        edge.push(real_order[real_order.len() - 1].1);
         let mut check_neg: HashSet<(String, char)> = HashSet::new();
-        let mut dollars = (0, 0);
-        let mut dollbwt_pos = Vec::new();
-        let mut doll_pos = Vec::new();
         let mut node_char = Vec::new();
         let mut fvec = vec![0; 256];
         for i in 0..real_order.len() {
@@ -157,19 +126,11 @@ impl SDbg {
                 fvec[nodes[i].chars().last().unwrap() as usize] = i;
             }
 
-            if !check_neg.contains(&(nodes[i][1..].to_string(), out[i])) {
-                check_neg.insert((nodes[i][1..].to_string(), out[i]));
+            if !check_neg.contains(&(nodes[i][1..].to_string(), edge[i])) {
+                check_neg.insert((nodes[i][1..].to_string(), edge[i]));
             } else {
                 neg[i] = true;
                 neg_pos.push(i);
-            }
-            if nodes[i].chars().last().unwrap() == '$' {
-                dollars.0 += 1;
-                doll_pos.push(i);
-            }
-            if out[i] == '$' {
-                dollars.1 += 1;
-                dollbwt_pos.push(i);
             }
             node_char.push(nodes[i].chars().last().unwrap());
         }
@@ -178,7 +139,7 @@ impl SDbg {
         for s in "$acgtACGT".chars() {
             let mut bv = BitVec::new();
             let mut bvneg = BitVec::new();
-            for (index, c) in out.iter().enumerate() {
+            for (index, c) in edge.iter().enumerate() {
                 if c == &s && !neg[index] {
                     bv.push(true);
                 } else {
@@ -206,13 +167,13 @@ impl SDbg {
         }
         let krank = round::ceil(((bv.len() as f64).log2()).powf(2.) / (32 as f64), 0);
         let rslast = RankSelect::new(bv.clone(), krank as usize);
-        let n_nodes = rslast.rank(out.len() as u64 - 1).unwrap() as usize;
+        let n_nodes = rslast.rank(edge.len() as u64 - 1).unwrap() as usize;
         SDbg {
             kmersize: k,
             n_nodes,
             node_char,
             last,
-            out,
+            edge,
             neg,
             rschar: bitvecs,
             rscharneg: bitvecsneg,
@@ -221,23 +182,33 @@ impl SDbg {
         }
     }
 
+    /// return the chosen k for kmers
     pub fn kmersize(&self) -> u32 { self.kmersize }
+    /// return the amount of nodes in the succint dbg
     pub fn n_nodes(&self) -> usize { self.n_nodes }
+    /// return the vec of last chars of nodes (sorted by the last char, as explained in Bowe's research)
     pub fn node_char(&self) -> &Vec<char> { &self.node_char }
+    /// return the last array (as explained in Bowe's research)
     pub fn last(&self) -> &Vec<usize> { &self.last }
-    pub fn out(&self) -> &Vec<char> { &self.out }
+    /// return the vec of edges (as explained in Bowe's research)
+    pub fn edge(&self) -> &Vec<char> { &self.edge }
+    /// return the bool array that it specifies if edge in marked as negative
     pub fn neg(&self) -> &Vec<bool> { &self.neg }
+    /// return the F array (as explained in Bowe's research)
     pub fn fvec(&self) -> &Vec<usize> { &self.fvec }
+    /// return the map with the bitvec of a char, char used by key, with rank/select (as explained in Bowe's research)
     pub fn rschar(&self) -> &HashMap<char, RankSelect> { &self.rschar }
+    /// return the map with the bitvec of a char marked as neg, char used by key, with rank/select (as explained in Bowe's research)
     pub fn rscharneg(&self) -> &HashMap<char, RankSelect> { &self.rscharneg }
+    /// return the map with the bitvec of the last array with rank/select (as explained in Bowe's research)
     pub fn rslast(&self) -> &RankSelect { &self.rslast }
-
+    /// print main structires of succint dbg
     pub fn print(&self) {
-        for i in 0..self.out().len() {
-            println!("{}|{}|{} ({})", self.last[i], self.node_char[i], self.out[i], self.neg[i]);
+        for i in 0..self.edge().len() {
+            println!("{}|{}|{} ({})", self.last[i], self.node_char[i], self.edge[i], self.neg[i]);
         }
     }
-
+    /// return the last char at index F array
     pub fn findsymbol(&self, i: isize) -> char {
         if i == 0 {
             return '$';
@@ -259,7 +230,7 @@ impl SDbg {
         }
         symbol
     }
-
+    /// return first edge from a node
     pub fn first_edge(&self, i: isize) -> isize {
         let select;
         if i <= 0 {
@@ -273,6 +244,7 @@ impl SDbg {
         select as isize + 1
     }
 
+    /// return last edge from a node
     pub fn last_edge(&self, i: isize) -> isize {
         let select;
         if i + 1 <= 0 {
@@ -286,10 +258,12 @@ impl SDbg {
         select as isize
     }
 
+    /// return range of edges from a node
     pub fn node_range(&self, i: isize) -> (isize, isize) {
         (self.first_edge(i), self.last_edge(i))
     }
 
+    /// change edge index in node index
     pub fn edge_to_node(&self, i: isize) -> isize {
         if i == 0 {
             return 0;
@@ -300,6 +274,8 @@ impl SDbg {
         };
         rank as isize
     }
+
+    /// change node index in edge index
     pub fn node_to_edge(&self, i: isize) -> isize {
         if i <= 0 {
             return 0;
@@ -311,8 +287,9 @@ impl SDbg {
         select as isize
     }
 
+    /// return index of the last edge of the node pointed to by edge as parameter (as explained in Bowe's research)
     pub fn forward(&self, i: isize) -> isize {
-        let symbol = self.out[i as usize];
+        let symbol = self.edge[i as usize];
         if symbol == '$' {
             return -1;
         }
@@ -337,6 +314,7 @@ impl SDbg {
         select
     }
 
+    /// return index of the first edge that points to the node that the edge at index exits (as explained in Bowe's research)
     pub fn backward(&self, i: isize) -> isize {
         let symbol = self.findsymbol(i);
         if symbol == '$' {
@@ -363,8 +341,9 @@ impl SDbg {
         select as isize
     }
 
+    /// return number of outgoing edges from a node (as explained in Bowe's research)
     pub fn outdegree(&self, i: isize) -> isize {
-        if self.out()[i as usize] == '$' {
+        if self.edge()[i as usize] == '$' {
             return 0;
         }
         let range = self.node_range(i);
@@ -373,23 +352,23 @@ impl SDbg {
         } else {
             return 1;
         }
-        //range.1 - range.0 + 1
     }
 
+    /// return number of incoming edges to a node (as explained in Bowe's research)
     pub fn indegree(&self, i: isize) -> isize {
         let last = self.last_edge(i);
         let pred = self.backward(last);
         if pred == -1 {
             return 0;
         }
-        let symbol = self.out()[pred as usize];
+        let symbol = self.edge()[pred as usize];
         let next;
         if pred + 1 <= 0 {
             next = -1
         } else {
             next = match &self.rschar()[&symbol].select(pred as u64 + 1) {
                 Some(t) => *t,
-                None => self.out().len() as u64 - 1,
+                None => self.edge().len() as u64 - 1,
             } as isize;
         }
         let negnextrank = match *&self.rscharneg[&symbol].rank(next as u64) {
@@ -403,7 +382,7 @@ impl SDbg {
         negnextrank - negpredrank + 1
     }
 
-    #[allow(unused_variables)]
+    /// return index obtained from a node, follow the edge labeled by a symbol (as explained in Bowe's research)
     pub fn outgoing(&self, i: isize, symbol: char) -> isize {
         if symbol == '$' {
             return -1;
@@ -450,7 +429,7 @@ impl SDbg {
             -1
         };
     }
-
+    /// return vec with index of successors from a node (as explained in Bowe's research)
     pub fn successors(&self, i: isize) -> Vec<isize> {
         let mut succs = Vec::new();
         let range = self.node_range(i);
@@ -463,6 +442,7 @@ impl SDbg {
         succs
     }
 
+    /// return label of a node (as explained in Bowe's research)
     pub fn label(&self, i: isize) -> String {
         if i == 0 {
             let mut countd = self.kmersize - 1;
@@ -521,20 +501,21 @@ impl SDbg {
         self.firstchar(self.selector(i, symbol, flag, pred))
     }
 
+    /// return predecessor node starting with a symbol, that has an edge to a node (as explained in Bowe's research)
     pub fn incoming(&self, i: isize, symbolf: char) -> isize {
         let last = self.last_edge(i);
         let pred = self.backward(last);
         if pred == -1 {
             return -1;
         }
-        let symbol = self.out()[pred as usize];
+        let symbol = self.edge()[pred as usize];
         let next;
         if pred + 1 <= 0 {
             next = -1
         } else {
             next = match &self.rschar()[&symbol].select(pred as u64 + 1) {
                 Some(t) => *t,
-                None => self.out().len() as u64 - 1,
+                None => self.edge().len() as u64 - 1,
             } as isize;
         }
         let flag = match self.rscharneg[&symbol].rank(pred as u64) {
@@ -563,9 +544,10 @@ impl SDbg {
         self.edge_to_node(self.selector(subind, symbol, flag, pred))
     }
 
-    pub fn to_dot(&self, output: &str) {
-        let mut fileout = File::create(output).expect("error");
-        fileout
+    /// print to file of the .dot of tne graph
+    pub fn to_dot(&self, edgeput: &str) {
+        let mut fileedge = File::create(edgeput).expect("error");
+        fileedge
             .write("digraph sample{\n".as_bytes())
             .expect("error");
         for i in 0..self.n_nodes() {
@@ -574,7 +556,7 @@ impl SDbg {
                     let start = self.label(i as isize);
                     let end = self.label(j as isize);
 
-                    fileout.write(
+                    fileedge.write(
                         format!(
                             "\t\"{}\" -> \"{}\" [ label = \"{}\" ];\n",
                             start,
@@ -587,7 +569,7 @@ impl SDbg {
                 }
             }
         }
-        fileout.write("}".as_bytes()).expect("error");
+        fileedge.write("}".as_bytes()).expect("error");
     }
 }
 
@@ -605,13 +587,13 @@ mod tests {
         let lastcheck: Vec<usize> = vec![1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1];
         let nodecheck = vec!['$', 'A', 'A', 'C', 'C', 'C', 'C', 'G', 'G', 'G', 'T',
                              'T', 'T'];
-        let outcheck = vec!['T', 'C', 'C', 'G', 'T', 'G', 'G', 'A', 'T', 'A', 'A',
+        let edgecheck = vec!['T', 'C', 'C', 'G', 'T', 'G', 'G', 'A', 'T', 'A', 'A',
                             '$', 'C'];
         let negcheck = vec![false, false, false, false, false, true, false, false,
                             false, true, false, false, false];
         assert_eq!(sdbg.last(), &lastcheck);
         assert_eq!(sdbg.node_char(), &nodecheck);
-        assert_eq!(sdbg.out(), &outcheck);
+        assert_eq!(sdbg.edge(), &edgecheck);
         assert_eq!(sdbg.neg(), &negcheck);
     }
 
@@ -621,7 +603,7 @@ mod tests {
         let sdbg = SDbg::new(&mut kmers, 4);
         let mut forw = Vec::new();
         let forcheck = vec![10, 4, 5, 8, 11, 8, 9, 1, 12, 1, 2, -1, 6];
-        for i in 0..sdbg.out().len() {
+        for i in 0..sdbg.edge().len() {
             forw.push(sdbg.forward(i as isize));
         }
         assert_eq!(forw, forcheck);
@@ -633,7 +615,7 @@ mod tests {
         let sdbg = SDbg::new(&mut kmers, 4);
         let mut backw = Vec::new();
         let backcheck = vec![-1, 7, 10, 1, 1, 2, 12, 3, 3, 6, 0, 4, 8];
-        for i in 0..sdbg.out().len() {
+        for i in 0..sdbg.edge().len() {
             backw.push(sdbg.backward(i as isize));
         }
         assert_eq!(backw, backcheck);
@@ -643,12 +625,12 @@ mod tests {
     fn test_sdbg_outdegree() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        let mut outd = Vec::new();
-        let outcheck = vec![1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1];
+        let mut edged = Vec::new();
+        let edgecheck = vec![1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1];
         for i in 0..sdbg.n_nodes() {
-            outd.push(sdbg.outdegree(i as isize));
+            edged.push(sdbg.outdegree(i as isize));
         }
-        assert_eq!(outd, outcheck);
+        assert_eq!(edged, edgecheck);
     }
 
     #[test]
@@ -667,17 +649,17 @@ mod tests {
     fn test_sdbg_outgoing() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        let mut outg = Vec::new();
-        let outcheck = vec![-1, -1, -1, -1, 8, -1, -1, 3, -1, -1, -1, -1, 4, -1, -1, -1,
+        let mut edgeg = Vec::new();
+        let edgecheck = vec![-1, -1, -1, -1, 8, -1, -1, 3, -1, -1, -1, -1, 4, -1, -1, -1,
                             -1, -1, 6, 9, -1, -1, -1, 6, -1, -1, -1, -1, 7, -1, -1, 1, -1, -1, 10,
                             -1, 1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5,
                             -1, -1];
         for i in 0..sdbg.n_nodes() {
             for j in ['$', 'A', 'C', 'G', 'T'] {
-                outg.push(sdbg.outgoing(i as isize, j));
+                edgeg.push(sdbg.outgoing(i as isize, j));
             }
         }
-        assert_eq!(outg, outcheck);
+        assert_eq!(edgeg, edgecheck);
     }
 
     #[test]
@@ -687,7 +669,7 @@ mod tests {
         let mut label = Vec::new();
         let labelcheck = vec!["$$$", "CGA", "$TA", "GAC", "TAC", "GTC", "ACG", "TCG",
                               "$$T", "ACT", "CGT", "$$T", "CGA"];
-        for i in 0..sdbg.out().len() {
+        for i in 0..sdbg.edge().len() {
             label.push(sdbg.label(i as isize));
         }
         assert_eq!(label, labelcheck);
@@ -697,13 +679,13 @@ mod tests {
     fn test_sdbg_successors() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        let mut outs = Vec::new();
+        let mut edges = Vec::new();
         let succcheck = vec![vec![8], vec![3], vec![4], vec![6, 9], vec![6], vec![7],
                              vec![1, 10], vec![1], vec![2], vec![-1], vec![5]];
         for i in 0..sdbg.n_nodes() {
-            outs.push(sdbg.successors(i as isize));
+            edges.push(sdbg.successors(i as isize));
         }
-        assert_eq!(outs, succcheck);
+        assert_eq!(edges, succcheck);
     }
 
     #[test]
