@@ -572,6 +572,36 @@ impl SDbg {
         }
         fileedge.write("}".as_bytes()).expect("error");
     }
+
+    /// print to file of the .dot of tne graph without $ nodes
+    pub fn to_dot_no_dollar(&self, edgeput: &str) {
+        let mut fileedge = File::create(edgeput).expect("error");
+        fileedge
+            .write("digraph sample{\n".as_bytes())
+            .expect("error");
+        for i in 0..self.n_nodes() {
+            if self.label(i as isize).chars().next().unwrap() != '$' {
+                for j in self.successors(i as isize) {
+                    if j != -1 {
+                        let start = self.label(i as isize);
+                        let end = self.label(j as isize);
+
+                        fileedge.write(
+                            format!(
+                                "\t\"{}\" -> \"{}\" [ label = \"{}\" ];\n",
+                                start,
+                                end,
+                                end.chars().last().unwrap()
+                            )
+                                .as_bytes(),
+                        )
+                            .expect("error");
+                    }
+                }
+            }
+        }
+        fileedge.write("}".as_bytes()).expect("error");
+    }
 }
 
 
@@ -593,7 +623,7 @@ mod tests {
         let fcheck = vec![0, 1, 3, 7, 10];
         let mut fvec = Vec::new();
         for elem in vec!['$', 'A', 'C', 'G', 'T', 'a', 'c', 'g', 't'] {
-            if sdbg.fvec[elem as usize] != 0 || elem == '$'{
+            if sdbg.fvec[elem as usize] != 0 || elem == '$' {
                 fvec.push(sdbg.fvec[elem as usize]);
             }
         }
