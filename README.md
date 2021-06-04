@@ -27,7 +27,7 @@ cargo doc --open
 ```
 
 ## Todo
-- [ ] documentation
+- [x] documentation (draft)
 - [ ] optimizations
 - [ ] refactoring
 - [ ] more tests
