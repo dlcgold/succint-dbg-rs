@@ -17,7 +17,7 @@ Succint rappresentation support:
 
 ```Rust
     let mut reads = vec!["TACGACGTCGACT".to_string()];
-    let sdbg = SDbg::new(&mut kmers, 4);
+    let sdbg = SDbg::new(&mut reads, 4);
 ```
 
 ![](output/gh.png)
