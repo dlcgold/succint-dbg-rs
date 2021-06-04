@@ -1,0 +1,11 @@
+digraph sample{
+	"CGA" -> "GAC" [ label = "C" ];
+	"GAC" -> "ACG" [ label = "G" ];
+	"GAC" -> "ACT" [ label = "T" ];
+	"TAC" -> "ACG" [ label = "G" ];
+	"GTC" -> "TCG" [ label = "G" ];
+	"ACG" -> "CGA" [ label = "A" ];
+	"ACG" -> "CGT" [ label = "T" ];
+	"TCG" -> "CGA" [ label = "A" ];
+	"CGT" -> "GTC" [ label = "C" ];
+}

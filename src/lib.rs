@@ -1,14 +1,47 @@
 //! Draft implementation of succint de Bruijn Graph of [Alex Bowe](https://alexbowe.com/succinct-debruijn-graphs/)
 //! ([Python Code](https://github.com/alexbowe/debby))
 //!
+//! This implementation is slow and completely unoptimized
+//!
 //! TODO:
-//! - [x] documentation (incomplete)
+//! - [x] documentation (draft)
 //! - [ ] optimizations
 //! - [ ] refactoring
 //! - [ ] more tests
 //!
 //! Examples will follow the graph in Alex Bowe's website
-
+//!
+//! The graph is derived from the string "TACGACGTCGACT" and has this rappresentation
+//! (edge index, node index and label are explained only for simplicity regarding the examples,
+//! they are not they are not stored):
+//! ```rust,ignore
+//! last edge negative edge_index node_index label
+//! 1	 T	  false    0          0          $$$
+//! 1	 C	  false    1          1          CGA
+//! 1	 C	  false    2          2          $TA
+//! 0	 G	  false    3          3          GAC
+//! 1	 T	  false    4          3          GAC
+//! 1	 G	  true     5          4          TAC
+//! 1	 G	  false    6          5          GTC
+//! 0	 A	  false    7          6          ACG
+//! 1	 T	  false    8          6          ACG
+//! 1	 A	  true     9          7          TCG
+//! 1	 A	  false    10         8          $$T
+//! 1	 $	  false    11         9          ACT
+//! 1	 C	  false    12         10         CGT
+//!
+//! F array:
+//! F($) = 0
+//! F(A) = 1
+//! F(C) = 3
+//! F(G) = 7
+//! F(T) = 10
+//! ```
+//! And the dot of the graph is:
+//! <div>
+//! <img src="../../../output/gh.png" />
+//! </div>
+//! <hr/>
 extern crate bio;
 
 use std::collections::{HashSet, HashMap};
@@ -22,13 +55,13 @@ use math::round;
 
 /// utility for create kmer-set (with correct number of $ at the begin) from a string.
 #[allow(dead_code)]
-pub fn create_kmers(s: String, k: u32) -> Vec<String> {
+fn create_kmers(s: String, k: u32) -> Vec<String> {
     get_kmers(&mut vec![s], k)
 }
 
 /// utility for create kmer-set (with correct number of $ at the begin) from Vec a string
 #[allow(dead_code)]
-pub fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
+fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
     let mut v: Vec<String> = Vec::new();
     let mut dollars = String::new();
     for _i in 0..k - 1 {
@@ -48,6 +81,16 @@ pub fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
     v
 }
 
+/// struct to implement succint dbg with
+/// - kmersize: the kmer size
+/// - n_nodes: amount of nodes
+/// - last: last array
+/// - edge: edges array
+/// - fvec: F array
+/// - neg: array to recognize edges marked as negative
+/// - rschar: map to obtain rank/select of edges
+/// - rscharneg: map to obtain rank/select of edges marked as negative
+/// - rslast: map to obtain rank/select of last array
 pub struct SDbg {
     kmersize: u32,
     n_nodes: usize,
@@ -61,7 +104,14 @@ pub struct SDbg {
 }
 
 impl SDbg {
-    /// create new succint dbg from a set of string
+    /// create new succint dbg from a set of strings
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// assert_eq!(sdbg.n_nodes(), 11)
+    /// ```
     pub fn new(reads: &mut Vec<String>, k: u32) -> Self {
         let mut node_edge: Vec<(String, char, String)> = Vec::new();
         let kmers = get_kmers(reads, k);
@@ -179,6 +229,16 @@ impl SDbg {
         }
     }
 
+    /// create new succint dbg from a string
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let sdbg = SDbg::new_from_string(&"TACGACGTCGACT".to_string(), 4);
+    /// assert_eq!(sdbg.n_nodes(), 11)
+    /// ```
+    pub fn new_from_string(read: &String, k: u32) -> Self {
+        SDbg::new(&mut vec![read.clone()], k)
+    }
     /// return the chosen k for kmers
     pub fn kmersize(&self) -> u32 { self.kmersize }
     /// return the amount of nodes in the succint dbg
@@ -197,12 +257,14 @@ impl SDbg {
     pub fn rscharneg(&self) -> &HashMap<char, RankSelect> { &self.rscharneg }
     /// return the map with the bitvec of the last array with rank/select (as explained in Bowe's research)
     pub fn rslast(&self) -> &RankSelect { &self.rslast }
+
     /// print main structires of succint dbg
     pub fn print(&self) {
+        println!("last edge negative");
         for i in 0..self.edge().len() {
-            println!("{}|{} ({})", self.last[i], self.edge[i], self.neg[i]);
+            println!("{}\t{}\t{}", self.last[i], self.edge[i], self.neg[i]);
         }
-        println!();
+        println!("F array:");
         for s in vec!['$', 'A', 'C', 'G', 'T', 'a', 'c', 'g', 't'] {
             if self.fvec[s as usize] != 0 || s == '$' {
                 println!("F({}) = {}", s, self.fvec[s as usize]);
@@ -210,6 +272,18 @@ impl SDbg {
         }
     }
     /// return the last char at index F array
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut symb = Vec::new();
+    /// let symbcheck = vec!['$', 'A', 'A', 'C', 'C', 'C', 'C', 'G', 'G', 'G', 'T', 'T', 'T'];
+    /// for i in 0..sdbg.edge().len() {
+    ///     symb.push(sdbg.findsymbol(i as isize));
+    /// }
+    /// assert_eq!(symb, symbcheck);
+    /// ```
     pub fn findsymbol(&self, i: isize) -> char {
         if i == 0 {
             return '$';
@@ -231,7 +305,20 @@ impl SDbg {
         }
         symbol
     }
+
     /// return first edge from a node
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut edged = Vec::new();
+    /// let edgecheck = vec![0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 12];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     edged.push(sdbg.first_edge(i as isize));
+    /// }
+    /// assert_eq!(edged, edgecheck);
+    ///```
     pub fn first_edge(&self, i: isize) -> isize {
         let select;
         if i <= 0 {
@@ -246,6 +333,18 @@ impl SDbg {
     }
 
     /// return last edge from a node
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut edged = Vec::new();
+    /// let edgecheck = vec![0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 12];
+    /// for i in 0..sdbg.n_nodes() {
+    /// edged.push(sdbg.last_edge(i as isize));
+    /// }
+    /// assert_eq!(edged, edgecheck);
+    /// ```
     pub fn last_edge(&self, i: isize) -> isize {
         let select;
         if i + 1 <= 0 {
@@ -260,11 +359,36 @@ impl SDbg {
     }
 
     /// return range of edges from a node
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut ranged = Vec::new();
+    /// let rangecheck = vec![(0, 0), (1, 1), (2, 2), (3, 4), (5, 5), (6, 6), (7, 8),
+    ///                       (9, 9), (10, 10), (11, 11), (12, 12)];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     ranged.push(sdbg.node_range(i as isize));
+    /// }
+    /// assert_eq!(ranged, rangecheck);
+    /// ```
     pub fn node_range(&self, i: isize) -> (isize, isize) {
         (self.first_edge(i), self.last_edge(i))
     }
 
     /// change edge index in node index
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut edged = Vec::new();
+    /// let edgecheck = vec![0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 10];
+    /// for i in 0..sdbg.edge().len() {
+    ///     edged.push(sdbg.edge_to_node(i as isize));
+    /// }
+    /// assert_eq!(edged, edgecheck);
+    /// ```
     pub fn edge_to_node(&self, i: isize) -> isize {
         if i == 0 {
             return 0;
@@ -276,7 +400,7 @@ impl SDbg {
         rank as isize
     }
 
-    /// change node index in edge index
+    /* change node index in edge index
     pub fn node_to_edge(&self, i: isize) -> isize {
         if i <= 0 {
             return 0;
@@ -286,9 +410,21 @@ impl SDbg {
             None => 0,
         } - 1;
         select as isize
-    }
+    }*/
 
     /// return index of the last edge of the node pointed to by edge as parameter (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut forw = Vec::new();
+    /// let forcheck = vec![10, 4, 5, 8, 11, 8, 9, 1, 12, 1, 2, -1, 6];
+    /// for i in 0..sdbg.edge().len() {
+    ///     forw.push(sdbg.forward(i as isize));
+    /// }
+    /// assert_eq!(forw, forcheck);
+    /// ```
     pub fn forward(&self, i: isize) -> isize {
         let symbol = self.edge[i as usize];
         if symbol == '$' {
@@ -316,6 +452,18 @@ impl SDbg {
     }
 
     /// return index of the first edge that points to the node that the edge at index exits (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut backw = Vec::new();
+    /// let backcheck = vec![-1, 7, 10, 1, 1, 2, 12, 3, 3, 6, 0, 4, 8];
+    /// for i in 0..sdbg.edge().len() {
+    ///     backw.push(sdbg.backward(i as isize));
+    /// }
+    /// assert_eq!(backw, backcheck);
+    /// ```
     pub fn backward(&self, i: isize) -> isize {
         let symbol = self.findsymbol(i);
         if symbol == '$' {
@@ -343,6 +491,18 @@ impl SDbg {
     }
 
     /// return number of outgoing edges from a node (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut edged = Vec::new();
+    /// let edgecheck = vec![1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     edged.push(sdbg.outdegree(i as isize));
+    /// }
+    /// assert_eq!(edged, edgecheck);
+    /// ```
     pub fn outdegree(&self, i: isize) -> isize {
         if self.edge()[i as usize] == '$' {
             return 0;
@@ -356,6 +516,18 @@ impl SDbg {
     }
 
     /// return number of incoming edges to a node (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut ind = Vec::new();
+    /// let incheck = vec![0, 2, 1, 1, 1, 1, 2, 1, 1, 1, 1];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     ind.push(sdbg.indegree(i as isize));
+    /// }
+    /// assert_eq!(ind, incheck);
+    /// ```
     pub fn indegree(&self, i: isize) -> isize {
         let last = self.last_edge(i);
         let pred = self.backward(last);
@@ -384,6 +556,22 @@ impl SDbg {
     }
 
     /// return index obtained from a node, follow the edge labeled by a symbol (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut edgeg = Vec::new();
+    /// let edgecheck = vec![-1, -1, -1, -1, 8, -1, -1, 3, -1, -1, -1, -1, 4, -1, -1, -1, -1, -1,
+    ///                       6, 9, -1, -1, -1, 6, -1, -1, -1, -1, 7, -1, -1, 1, -1, -1, 10, -1, 1,
+    ///                       -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5, -1, -1];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     for j in ['$', 'A', 'C', 'G', 'T'] {
+    ///         edgeg.push(sdbg.outgoing(i as isize, j));
+    ///     }
+    /// }
+    /// assert_eq!(edgeg, edgecheck);
+    /// ```
     pub fn outgoing(&self, i: isize, symbol: char) -> isize {
         if symbol == '$' {
             return -1;
@@ -431,6 +619,19 @@ impl SDbg {
         };
     }
     /// return vec with index of successors from a node (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut edges = Vec::new();
+    /// let succcheck = vec![vec![8], vec![3], vec![4], vec![6, 9], vec![6], vec![7],
+    ///                      vec![1, 10], vec![1], vec![2], vec![-1], vec![5]];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     edges.push(sdbg.successors(i as isize));
+    /// }
+    /// assert_eq!(edges, succcheck);
+    /// ```
     pub fn successors(&self, i: isize) -> Vec<isize> {
         let mut succs = Vec::new();
         let range = self.node_range(i);
@@ -444,6 +645,19 @@ impl SDbg {
     }
 
     /// return label of a node (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut label = Vec::new();
+    /// let labelcheck = vec!["$$$", "CGA", "$TA", "GAC", "TAC", "GTC", "ACG", "TCG",
+    ///                       "$$T", "ACT", "CGT", "$$T", "CGA"];
+    /// for i in 0..sdbg.edge().len() {
+    ///     label.push(sdbg.label(i as isize));
+    /// }
+    /// assert_eq!(label, labelcheck);
+    /// ```
     pub fn label(&self, i: isize) -> String {
         if i == 0 {
             let mut countd = self.kmersize - 1;
@@ -503,6 +717,22 @@ impl SDbg {
     }
 
     /// return predecessor node starting with a symbol, that has an edge to a node (as explained in Bowe's research)
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// let mut ing = Vec::new();
+    /// let incheck = vec![-1, -1, -1, -1, -1, -1, 6, -1, -1, 7, 8, -1, -1, -1, -1, -1, -1,
+    ///                    1, -1, -1, 2, -1, -1, -1, -1, -1, -1, 10, -1, -1, -1, -1, -1, 3, 4, -1,
+    ///                    -1, -1, 5, -1, 0, -1, -1, -1, -1, -1, -1, -1, 3, -1, -1, 6, -1, -1, -1];
+    /// for i in 0..sdbg.n_nodes() {
+    ///     for j in ['$', 'A', 'C', 'G', 'T'] {
+    ///         ing.push(sdbg.incoming(i as isize, j));
+    ///     }
+    /// }
+    /// assert_eq!(ing, incheck);
+    /// ```
     pub fn incoming(&self, i: isize, symbolf: char) -> isize {
         let last = self.last_edge(i);
         let pred = self.backward(last);
@@ -546,6 +776,15 @@ impl SDbg {
     }
 
     /// print to file of the .dot of tne graph
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// use std::path::Path;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// sdbg.to_dot("output/bowe.dot");
+    /// assert!(Path::new("output/bowe.dot").exists());
+    /// ```
     pub fn to_dot(&self, edgeput: &str) {
         let mut fileedge = File::create(edgeput).expect("error");
         fileedge
@@ -574,6 +813,15 @@ impl SDbg {
     }
 
     /// print to file of the .dot of tne graph without $ nodes
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// use std::path::Path;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// sdbg.to_dot_no_dollar("output/bowend.dot");
+    /// assert!(Path::new("output/bowend.dot").exists());
+    /// ```
     pub fn to_dot_no_dollar(&self, edgeput: &str) {
         let mut fileedge = File::create(edgeput).expect("error");
         fileedge
@@ -634,6 +882,18 @@ mod tests {
     }
 
     #[test]
+    fn test_sdbg_findsymbol() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut symb = Vec::new();
+        let symbcheck = vec!['$', 'A', 'A', 'C', 'C', 'C', 'C', 'G', 'G', 'G', 'T', 'T', 'T'];
+        for i in 0..sdbg.edge().len() {
+            symb.push(sdbg.findsymbol(i as isize));
+        }
+        assert_eq!(symb, symbcheck);
+    }
+
+    #[test]
     fn test_sdbg_forward() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
@@ -665,6 +925,54 @@ mod tests {
         let edgecheck = vec![1, 1, 1, 2, 1, 1, 2, 1, 1, 1, 1];
         for i in 0..sdbg.n_nodes() {
             edged.push(sdbg.outdegree(i as isize));
+        }
+        assert_eq!(edged, edgecheck);
+    }
+
+    #[test]
+    fn test_sdbg_firstedge() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut edged = Vec::new();
+        let edgecheck = vec![0, 1, 2, 3, 5, 6, 7, 9, 10, 11, 12];
+        for i in 0..sdbg.n_nodes() {
+            edged.push(sdbg.first_edge(i as isize));
+        }
+        assert_eq!(edged, edgecheck);
+    }
+
+    #[test]
+    fn test_sdbg_lastedge() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut edged = Vec::new();
+        let edgecheck = vec![0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 12];
+        for i in 0..sdbg.n_nodes() {
+            edged.push(sdbg.last_edge(i as isize));
+        }
+        assert_eq!(edged, edgecheck);
+    }
+
+    #[test]
+    fn test_sdbg_noderange() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut ranged = Vec::new();
+        let rangecheck = vec![(0, 0), (1, 1), (2, 2), (3, 4), (5, 5), (6, 6), (7, 8), (9, 9), (10, 10), (11, 11), (12, 12)];
+        for i in 0..sdbg.n_nodes() {
+            ranged.push(sdbg.node_range(i as isize));
+        }
+        assert_eq!(ranged, rangecheck);
+    }
+
+    #[test]
+    fn test_sdbg_edgenode() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        let mut edged = Vec::new();
+        let edgecheck = vec![0, 1, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 10];
+        for i in 0..sdbg.edge().len() {
+            edged.push(sdbg.edge_to_node(i as isize));
         }
         assert_eq!(edged, edgecheck);
     }
@@ -746,6 +1054,14 @@ mod tests {
         let sdbg = SDbg::new(&mut kmers, 4);
         sdbg.to_dot("output/bowe.dot");
         assert!(Path::new("output/bowe.dot").exists());
+    }
+
+    #[test]
+    fn test_sdbg_to_dot_nodol() {
+        let mut kmers = vec!["TACGACGTCGACT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 4);
+        sdbg.to_dot_no_dollar("output/bowend.dot");
+        assert!(Path::new("output/bowend.dot").exists());
     }
 
     #[test]
