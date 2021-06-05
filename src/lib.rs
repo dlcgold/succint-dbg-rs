@@ -777,14 +777,19 @@ impl SDbg {
     /// use std::path::Path;
     /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
     /// let sdbg = SDbg::new(&mut kmers, 4);
-    /// sdbg.to_dot("output/bowe.dot");
+    /// sdbg.to_dot("output/bowe.dot", true);
     /// assert!(Path::new("output/bowe.dot").exists());
     /// ```
-    pub fn to_dot(&self, edgeput: &str) {
+    pub fn to_dot(&self, edgeput: &str,horizontal: bool) {
         let mut fileedge = File::create(edgeput).expect("error");
         fileedge
             .write("digraph sample{\n".as_bytes())
             .expect("error");
+        if horizontal {
+            fileedge
+                .write("\trankdir=\"LR\";\n".as_bytes())
+                .expect("error");
+        }
         for i in 0..self.n_nodes() {
             for j in self.successors(i as isize) {
                 if j != -1 {
@@ -814,14 +819,19 @@ impl SDbg {
     /// use std::path::Path;
     /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
     /// let sdbg = SDbg::new(&mut kmers, 4);
-    /// sdbg.to_dot_no_dollar("output/bowend.dot");
+    /// sdbg.to_dot_no_dollar("output/bowend.dot", true);
     /// assert!(Path::new("output/bowend.dot").exists());
     /// ```
-    pub fn to_dot_no_dollar(&self, edgeput: &str) {
+    pub fn to_dot_no_dollar(&self, edgeput: &str, horizontal: bool) {
         let mut fileedge = File::create(edgeput).expect("error");
         fileedge
             .write("digraph sample{\n".as_bytes())
             .expect("error");
+        if horizontal{
+            fileedge
+                .write("\trankdir=\"LR\";\n".as_bytes())
+                .expect("error");
+        }
         for i in 0..self.n_nodes() {
             if self.label(i as isize).chars().next().unwrap() != '$' {
                 for j in self.successors(i as isize) {
@@ -1048,7 +1058,7 @@ mod tests {
     fn test_sdbg_to_dot() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        sdbg.to_dot("output/bowe.dot");
+        sdbg.to_dot("output/bowe.dot", true);
         assert!(Path::new("output/bowe.dot").exists());
     }
 
@@ -1056,7 +1066,7 @@ mod tests {
     fn test_sdbg_to_dot_nodol() {
         let mut kmers = vec!["TACGACGTCGACT".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        sdbg.to_dot_no_dollar("output/bowend.dot");
+        sdbg.to_dot_no_dollar("output/bowend.dot", true);
         assert!(Path::new("output/bowend.dot").exists());
     }
 
@@ -1066,7 +1076,7 @@ mod tests {
                              "TACTCA".to_string(),
                              "GACTCG".to_string()];
         let sdbg = SDbg::new(&mut kmers, 4);
-        sdbg.to_dot("output/slide.dot");
+        sdbg.to_dot("output/slide.dot", false);
         assert!(Path::new("output/slide.dot").exists());
     }
 
@@ -1075,7 +1085,7 @@ mod tests {
         let mut kmers = vec!["ATCTTGCATTACCGCCCCAATC".to_string(),
                              "ATCTTACATTACCGTCCCAACC".to_string()];
         let sdbg = SDbg::new(&mut kmers, 6);
-        sdbg.to_dot("output/assign2.dot");
+        sdbg.to_dot("output/assign2.dot", false);
         assert!(Path::new("output/assign2.dot").exists());
     }
 

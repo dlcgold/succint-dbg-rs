@@ -1,4 +1,5 @@
 digraph sample{
+	rankdir="LR";
 	"$$$" -> "$$T" [ label = "T" ];
 	"CGA" -> "GAC" [ label = "C" ];
 	"$TA" -> "TAC" [ label = "C" ];

@@ -1,4 +1,5 @@
 digraph sample{
+	rankdir="LR";
 	"CGA" -> "GAC" [ label = "C" ];
 	"GAC" -> "ACG" [ label = "G" ];
 	"GAC" -> "ACT" [ label = "T" ];
