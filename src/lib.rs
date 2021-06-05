@@ -109,6 +109,7 @@ impl SDbg {
     pub fn new(reads: &mut Vec<String>, k: u32) -> Self {
         let mut node_edge: Vec<(String, char, String)> = Vec::new();
         let kmers = get_kmers(reads, k);
+
         let mut set_check = HashSet::new();
         for kmer in &kmers {
             let kmer1 = kmer[0..(k - 1) as usize].to_string();
@@ -142,6 +143,7 @@ impl SDbg {
                 tmp.clear();
             }
         }
+
         let mut last = Vec::new();
         let mut nodes = Vec::new();
         let mut edge = Vec::new();
@@ -1082,7 +1084,6 @@ mod tests {
         let filename = "input/test.txt";
         let read = fs::read_to_string(filename).unwrap().replace("\n","");
         let sdbg = SDbg::new_from_string(&read, 32);
-        sdbg.to_dot("output/brutaln.dot");
-        assert!(Path::new("output/brutaln.dot").exists());
+        assert_eq!(sdbg.n_nodes, 23203);
     }
 }
