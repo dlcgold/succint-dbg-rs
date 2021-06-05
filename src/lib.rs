@@ -47,17 +47,13 @@ extern crate bio;
 use std::collections::{HashSet, HashMap};
 use bio::data_structures::rank_select::RankSelect;
 use bv::BitVec;
+use math::round;
+use itertools::Itertools;
 #[allow(unused_imports)]
 use std::fs::File;
 #[allow(unused_imports)]
 use std::io::Write;
-use math::round;
 
-/// utility for create kmer-set (with correct number of $ at the begin) from a string.
-#[allow(dead_code)]
-fn create_kmers(s: String, k: u32) -> Vec<String> {
-    get_kmers(&mut vec![s], k)
-}
 
 /// utility for create kmer-set (with correct number of $ at the begin) from Vec a string
 #[allow(dead_code)]
@@ -72,13 +68,12 @@ fn get_kmers(reads: &mut Vec<String>, k: u32) -> Vec<String> {
     }
     for s in reads {
         while s.len() >= k as usize {
-            if !v.contains(&s[0..k as usize].to_string()) {
-                v.push(s[0..k as usize].to_string());
-            }
+            v.push(s[0..k as usize].to_string());
             *s = String::from(&s[1..]);
         }
     }
-    v
+    let unique = v.iter().unique().map(|c| String::from(c)).collect::<Vec<_>>();
+    unique
 }
 
 /// struct to implement succint dbg with
@@ -131,7 +126,6 @@ impl SDbg {
                                 kmer2.chars().rev().collect()));
             }
         }
-
         node_edge.sort_by(|a, b| (a.2.cmp(&b.2)));
         let mut real_order = Vec::new();
         let mut tmp = Vec::new();
@@ -858,6 +852,7 @@ mod tests {
     use crate::SDbg;
     #[allow(unused_imports)]
     use std::path::Path;
+    use std::fs;
 
     #[test]
     fn test_sdbg() {
@@ -1081,5 +1076,14 @@ mod tests {
         let sdbg = SDbg::new(&mut kmers, 6);
         sdbg.to_dot("output/assign2.dot");
         assert!(Path::new("output/assign2.dot").exists());
+    }
+
+    #[test]
+    fn test_fasta() {
+        let filename = "input/test.txt";
+        let read = fs::read_to_string(filename).unwrap().replace("\n","");
+        let sdbg = SDbg::new_from_string(&read, 32);
+        sdbg.to_dot("output/brutaln.dot");
+        assert!(Path::new("output/brutaln.dot").exists());
     }
 }

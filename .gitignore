@@ -449,3 +449,4 @@ flycheck_*.el
 Cargo.lock
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,emacs,intellij,intellij+iml,intellij+all,clion,clion+iml,clion+all
+/output/brutal.*
