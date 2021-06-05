@@ -42,7 +42,6 @@
 //! <img src="../../../output/gh.png" />
 //! </div>
 //! <hr/>
-extern crate bio;
 
 use std::collections::{HashSet, HashMap};
 use bio::data_structures::rank_select::RankSelect;
