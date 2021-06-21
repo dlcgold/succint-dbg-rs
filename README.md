@@ -12,6 +12,7 @@ Succint rappresentation support:
 - incoming(n, s)
 - successors(n)
 - label(n)
+- creation from a String, from a String Vector, from a FASTQ file and from a FASTA file
 - print of the vectors that represent the dbg
 - dot creation
 
