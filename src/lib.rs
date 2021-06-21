@@ -44,6 +44,8 @@
 //! <hr/>
 
 use std::collections::{HashSet, HashMap};
+use bio::io::fastq;
+use bio::io::fasta;
 use bio::data_structures::rank_select::RankSelect;
 use bv::BitVec;
 use math::round;
@@ -234,6 +236,63 @@ impl SDbg {
     pub fn new_from_string(read: &String, k: u32) -> Self {
         SDbg::new(&mut vec![read.clone()], k)
     }
+
+    /// create new succint dbg from a fastq file
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// use std::path::Path;
+    /// let sdbg = SDbg::new_from_fastq("input/ERR4439830.fastq", 32);
+    /// sdbg.to_dot_nolabel("output/fastq.dot", false);
+    /// assert!(Path::new("output/fastq.dot").exists());
+    /// ```
+    pub fn new_from_fastq(input: &str, k: u32) -> Self {
+        let reader = fastq::Reader::from_file(input).unwrap();
+        let mut min_read = k as usize;
+        let mut reads = Vec::new();
+        for result in reader.records() {
+            let record = result.expect("Error during fasta record parsing");
+            if record.seq().len() < min_read {
+                min_read = record.seq().len();
+            }
+            let mut tmp = "".to_string();
+            for elem in record.seq() {
+                tmp.push(*elem as char)
+            }
+            reads.push(tmp);
+        }
+        let mut unique = reads.iter().unique().map(|c| String::from(c)).collect::<Vec<_>>();
+        SDbg::new(&mut unique, min_read as u32)
+    }
+
+    /// create new succint dbg from a fasta file
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// use std::path::Path;
+    /// let sdbg = SDbg::new_from_fasta("input/MN9089473.fasta", 32);
+    /// sdbg.to_dot_nolabel("output/fasta.dot", false);
+    /// assert!(Path::new("output/fasta.dot").exists());
+    /// ```
+    pub fn new_from_fasta(input: &str, k: u32) -> Self {
+        let reader = fasta::Reader::from_file(input).unwrap();
+        let mut min_read = k as usize;
+        let mut reads = Vec::new();
+        for result in reader.records() {
+            let record = result.expect("Error during fasta record parsing");
+            if record.seq().len() < min_read {
+                min_read = record.seq().len();
+            }
+            let mut tmp = "".to_string();
+            for elem in record.seq() {
+                tmp.push(*elem as char)
+            }
+            reads.push(tmp);
+        }
+        let mut unique = reads.iter().unique().map(|c| String::from(c)).collect::<Vec<_>>();
+        SDbg::new(&mut unique, min_read as u32)
+    }
+
     /// return the chosen k for kmers
     pub fn kmersize(&self) -> u32 { self.kmersize }
     /// return the amount of nodes in the succint dbg
@@ -585,7 +644,12 @@ impl SDbg {
                 None => 0,
             } as isize;
         }
-
+        if range.0 <= selectnode && selectnode <= range.1 {
+            return (match *&self.rslast.rank(self.forward(selectnode) as u64) {
+                Some(t) => t,
+                None => 0,
+            } - 1) as isize;
+        }
         let relindexneg = match *&self.rscharneg()[&symbol].rank(range.1 as u64) {
             Some(t) => t,
             None => 0,
@@ -599,19 +663,13 @@ impl SDbg {
                 None => 0,
             } as isize;
         }
-        return if range.0 <= selectnode && selectnode <= range.1 {
-            (match *&self.rslast.rank(self.forward(selectnode) as u64) {
+        if range.0 <= selectnodeneg && selectnodeneg <= range.1 {
+            return (match *&self.rslast.rank(self.forward(selectnodeneg) as u64) {
                 Some(t) => t,
                 None => 0,
-            } - 1) as isize
-        } else if range.0 <= selectnodeneg && selectnodeneg <= range.1 {
-            (match *&self.rslast.rank(self.forward(selectnodeneg) as u64) {
-                Some(t) => t,
-                None => 0,
-            } - 1) as isize
-        } else {
-            -1
-        };
+            } - 1) as isize;
+        }
+        -1
     }
     /// return vec with index of successors from a node (as explained in Bowe's research)
     /// # Example
@@ -780,13 +838,13 @@ impl SDbg {
     /// sdbg.to_dot("output/bowe.dot", true);
     /// assert!(Path::new("output/bowe.dot").exists());
     /// ```
-    pub fn to_dot(&self, edgeput: &str,horizontal: bool) {
-        let mut fileedge = File::create(edgeput).expect("error");
-        fileedge
+    pub fn to_dot(&self, output: &str, horizontal: bool) {
+        let mut fileout = File::create(output).expect("error");
+        fileout
             .write("digraph sample{\n".as_bytes())
             .expect("error");
         if horizontal {
-            fileedge
+            fileout
                 .write("\trankdir=\"LR\";\n".as_bytes())
                 .expect("error");
         }
@@ -796,9 +854,9 @@ impl SDbg {
                     let start = self.label(i as isize);
                     let end = self.label(j as isize);
 
-                    fileedge.write(
+                    fileout.write(
                         format!(
-                            "\t\"{}\" -> \"{}\" [ label = \"{}\" ];\n",
+                            "\t\"{}\" -> \"{}\" [ label = \" {}\" ];\n",
                             start,
                             end,
                             end.chars().last().unwrap()
@@ -809,10 +867,10 @@ impl SDbg {
                 }
             }
         }
-        fileedge.write("}".as_bytes()).expect("error");
+        fileout.write("}".as_bytes()).expect("error");
     }
 
-    /// print to file of the .dot of tne graph without $ nodes
+    /// print to file of the .dot of the graph without $ nodes
     /// # Example
     /// ```
     /// use succint_dbg_rs::SDbg;
@@ -822,13 +880,13 @@ impl SDbg {
     /// sdbg.to_dot_no_dollar("output/bowend.dot", true);
     /// assert!(Path::new("output/bowend.dot").exists());
     /// ```
-    pub fn to_dot_no_dollar(&self, edgeput: &str, horizontal: bool) {
-        let mut fileedge = File::create(edgeput).expect("error");
-        fileedge
+    pub fn to_dot_no_dollar(&self, output: &str, horizontal: bool) {
+        let mut fileout = File::create(output).expect("error");
+        fileout
             .write("digraph sample{\n".as_bytes())
             .expect("error");
-        if horizontal{
-            fileedge
+        if horizontal {
+            fileout
                 .write("\trankdir=\"LR\";\n".as_bytes())
                 .expect("error");
         }
@@ -839,9 +897,9 @@ impl SDbg {
                         let start = self.label(i as isize);
                         let end = self.label(j as isize);
 
-                        fileedge.write(
+                        fileout.write(
                             format!(
-                                "\t\"{}\" -> \"{}\" [ label = \"{}\" ];\n",
+                                "\t\"{}\" -> \"{}\" [ label = \" {}\" ];\n",
                                 start,
                                 end,
                                 end.chars().last().unwrap()
@@ -853,7 +911,72 @@ impl SDbg {
                 }
             }
         }
-        fileedge.write("}".as_bytes()).expect("error");
+        fileout.write("}".as_bytes()).expect("error");
+    }
+
+    /// print to file of the .dot of the graph without any label
+    /// # Example
+    /// ```
+    /// use succint_dbg_rs::SDbg;
+    /// use std::path::Path;
+    /// let mut kmers = vec!["TACGACGTCGACT".to_string()];
+    /// let sdbg = SDbg::new(&mut kmers, 4);
+    /// sdbg.to_dot_nolabel("output/bowenl.dot", true);
+    /// assert!(Path::new("output/bowenl.dot").exists());
+    /// ```
+    pub fn to_dot_nolabel(&self, output: &str, horizontal: bool) {
+        let mut fileout = File::create(output).expect("error");
+        fileout
+            .write("digraph sample{\n".as_bytes())
+            .expect("error");
+        if horizontal {
+            fileout
+                .write("\trankdir=\"LR\";\n".as_bytes())
+                .expect("error");
+        } else {
+            fileout
+                .write("\tlayout=neato;\n".as_bytes())
+                .expect("error");
+        }
+        fileout
+            .write("\tnode [shape=point, width=0.15];\n".as_bytes())
+            .expect("error");
+        for i in 0..self.n_nodes() {
+            for j in self.successors(i as isize) {
+                if j != -1 {
+                    if i == 0 {
+                        fileout.write(
+                            format!(
+                                "\t{} [fillcolor=yellow];\n",
+                                i
+                            )
+                                .as_bytes(),
+                        )
+                            .expect("error");
+                        fileout.write(
+                            format!(
+                                "\t{} -> {};\n",
+                                i,
+                                j
+                            )
+                                .as_bytes(),
+                        )
+                            .expect("error");
+                    } else {
+                        fileout.write(
+                            format!(
+                                "\t{} -> {};\n",
+                                i,
+                                j
+                            )
+                                .as_bytes(),
+                        )
+                            .expect("error");
+                    }
+                }
+            }
+        }
+        fileout.write("}".as_bytes()).expect("error");
     }
 }
 
@@ -1090,10 +1213,37 @@ mod tests {
     }
 
     #[test]
-    fn test_fasta() {
+    fn test_file_big() {
         let filename = "input/test.txt";
-        let read = fs::read_to_string(filename).unwrap().replace("\n","");
+        let read = fs::read_to_string(filename).unwrap().replace("\n", "");
         let sdbg = SDbg::new_from_string(&read, 32);
+        sdbg.to_dot_nolabel("output/test3.dot", false);
         assert_eq!(sdbg.n_nodes, 23203);
+    }
+
+    #[test]
+    fn test_assign3() {
+        let mut kmers = vec!["ACCGCGCTCGCGTACCTT".to_string()];
+        let sdbg = SDbg::new(&mut kmers, 5);
+        assert_eq!(17, sdbg.forward(13));
+        assert_eq!(16, sdbg.outgoing(12, 'T'));
+        assert_eq!(8, sdbg.outgoing(12, 'C'));
+        assert_eq!(-1, sdbg.outgoing(12, 'A'));
+        assert_eq!(12, sdbg.outgoing(9, 'G'));
+
+    }
+
+    #[test]
+    fn test_fastq() {
+        let sdbg = SDbg::new_from_fastq("input/ERR4439830.fastq", 32);
+        sdbg.to_dot_nolabel("output/fastq.dot", false);
+        assert!(Path::new("output/fastq.dot").exists());
+    }
+
+    #[test]
+    fn test_fasta() {
+        let sdbg = SDbg::new_from_fasta("input/MN9089473.fasta", 32);
+        sdbg.to_dot_nolabel("output/fasta.dot", false);
+        assert!(Path::new("output/fasta.dot").exists());
     }
 }
